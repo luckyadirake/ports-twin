@@ -42,6 +42,8 @@ export interface AgentRun {
  */
 export interface Rejection {
   readonly agent: AgentId;
+  /** the agent whose accepted plan made this one impossible */
+  readonly against: AgentId | null;
   readonly label: string;
   readonly reason: string;
 }

@@ -146,9 +146,12 @@ export const useStore = create<State>((set, get) => ({
   runSolve() {
     clearTimers();
     set({ solvePhase: 'brief' });
-    timers.push(setTimeout(() => set({ solvePhase: 'solve' }), 380));
-    timers.push(setTimeout(() => set({ solvePhase: 'arbitrate' }), 1620));
-    timers.push(setTimeout(() => set({ solvePhase: 'idle', solved: true }), 2500));
+    /* long enough that each beat is legible from the back of a room — the
+       agents are drawing on the port during these, and a beat nobody can read
+       is a beat that did not happen */
+    timers.push(setTimeout(() => set({ solvePhase: 'solve' }), 520));
+    timers.push(setTimeout(() => set({ solvePhase: 'arbitrate' }), 2300));
+    timers.push(setTimeout(() => set({ solvePhase: 'idle', solved: true }), 3400));
   },
 
   /**

@@ -142,6 +142,8 @@ export function solve(input: SolveInput): Solved {
 
   const labelOf = (id: string) =>
     specs.flatMap(sp => sp.space).find(a => a.apply === id)?.label ?? id;
+  const ownerOf = (id: string): AgentId | null =>
+    specs.find(sp => sp.space.some(a => a.apply === id))?.id ?? null;
 
   const rejected: Rejection[] = [];
   const accepted: string[] = [];
@@ -149,7 +151,10 @@ export function solve(input: SolveInput): Solved {
     for (const cand of mine) {
       const clash = conflicts.find(([winner, loser]) => loser === cand.id && accepted.includes(winner));
       if (clash) {
-        rejected.push({ agent: agentId, label: labelOf(cand.id), reason: clash[2] });
+        rejected.push({
+          agent: agentId, against: ownerOf(clash[0]),
+          label: labelOf(cand.id), reason: clash[2],
+        });
         continue;                       // try this agent's next-best instead
       }
       accepted.push(cand.id);

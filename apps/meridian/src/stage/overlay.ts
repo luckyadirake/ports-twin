@@ -6,7 +6,7 @@
  * That is what makes the schematic view genuinely the same view: same
  * calibration, same geometry, different background.
  */
-import type { PlateCalib, ScenarioState, KernelFrame } from '@meridian/contracts';
+import type { PlateCalib, ScenarioState, KernelFrame, AgentId, SolvePhase } from '@meridian/contracts';
 import { apron, yardPoint, yardBlockQuad } from '@meridian/contracts';
 import { heat } from '@meridian/ui';
 
@@ -58,6 +58,8 @@ export interface DrawCtx {
   planT: number;
   /** 0 → 1 as a projected plan fades up over the port */
   previewT: number;
+  /** which beat of the agent run is on screen */
+  phase: SolvePhase;
 }
 
 /** Screen position of every chain hotspot, for drawing AND for hit-testing. */
@@ -368,6 +370,104 @@ export function drawHotspots(d: DrawCtx) {
   });
 }
 
+/* ---------------------------------------------------------- agents at work -- */
+/**
+ * THE AGENTS, ON THE PORT.
+ *
+ * Each agent owns a patch of the terminal, so it gets a station there. During a
+ * run you watch them work their own ground: the berth agent sweeps the quay,
+ * the yard agent rakes block 3C, the landside agent runs the gate lanes. The
+ * dart count is the candidate count, so the activity is proportional to the
+ * search actually being done rather than to how busy we want it to look.
+ */
+const STATION: Record<AgentId, { at: readonly [number, number]; from: number; to: number; v: number }> = {
+  //                         where it sits           the ground it searches (u0→u1, at v)
+  berth:    { at: [0.50, 0.600], from: 0.08, to: 0.92, v: 0.600 },
+  yard:     { at: [0.36, 0.830], from: 0.16, to: 0.60, v: 0.870 },
+  landside: { at: [0.80, 0.700], from: 0.64, to: 0.95, v: 0.740 },
+  fleet:    { at: [0.55, 0.720], from: 0.12, to: 0.90, v: 0.720 },
+  voyage:   { at: [0.72, 0.470], from: 0.55, to: 0.95, v: 0.470 },
+};
+
+export function drawAgents(d: DrawCtx) {
+  const ph = d.phase;
+  if (ph === 'idle' || ph === 'report') return;
+  const c = d.ctx;
+  const sv = d.scen.solve;
+  const live = sv.agents.filter(a => a.engaged);
+  if (live.length === 0) return;
+
+  const fade = ph === 'brief' ? 0.55 : 1;
+
+  for (const a of live) {
+    const st = STATION[a.id];
+    const [sx, sy] = P(d, st.at);
+
+    /* the station itself — a diamond, because nothing else on this stage is */
+    c.save();
+    c.globalAlpha = fade;
+    c.translate(sx, sy); c.rotate(Math.PI / 4);
+    c.strokeStyle = CYAN; c.lineWidth = 1.4;
+    c.strokeRect(-5, -5, 10, 10);
+    if (ph !== 'brief') {
+      c.fillStyle = 'rgba(63,217,236,.5)';
+      c.fillRect(-2.5, -2.5, 5, 5);
+    }
+    c.restore();
+    label(d, a.label.toUpperCase(), sx, sy - 16, CYAN, 8.5, 'center');
+
+    /* SOLVE — darts running over the ground this agent is responsible for.
+       One dart per candidate it is scoring, so the port gets busy in
+       proportion to the work. */
+    if (ph === 'solve' && a.evaluated > 0) {
+      for (let i = 0; i < a.evaluated; i++) {
+        const k = ((d.t / 900) + i / a.evaluated) % 1;
+        const u = st.from + (st.to - st.from) * k;
+        const [px, py] = P(d, [u, st.v]);
+        c.save();
+        c.globalAlpha = Math.sin(k * Math.PI) * 0.9;
+        c.fillStyle = CYAN; c.shadowColor = CYAN; c.shadowBlur = 8;
+        c.fillRect(px - 4, py - 1, 8, 2);
+        c.restore();
+      }
+      // the reach of its mandate, drawn once
+      const [ax, ay] = P(d, [st.from, st.v]);
+      const [bx, by] = P(d, [st.to, st.v]);
+      line(d, [ax, ay], [bx, by], 'rgba(63,217,236,.25)', 1, [2, 5]);
+    }
+
+    /* ARBITRATE — the argument, drawn between the two stations that had it */
+    if (ph === 'arbitrate') {
+      for (const r of sv.rejected) {
+        if (r.agent !== a.id || !r.against) continue;
+        const [ox, oy] = P(d, STATION[r.against].at);
+        const blink = Math.sin(d.t / 140) > 0;
+        line(d, [sx, sy], [ox, oy], blink ? RED : 'rgba(255,87,71,.3)', 1.6, [5, 4]);
+        c.save();
+        c.globalAlpha = blink ? 1 : 0.35;
+        c.fillStyle = RED; c.font = '700 11px "IBM Plex Mono", monospace';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('✕', (sx + ox) / 2, (sy + oy) / 2);
+        c.restore();
+      }
+    }
+  }
+
+  /* SIMULATE — the plan being run forward across the terminal, link by link */
+  if (ph === 'simulate') {
+    const pts = hotspots(d.fit, d.scen.chain, d.w, d.h);
+    const k = (d.t / 1400) % 1;
+    const head = k * (pts.length - 1);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i], p1 = pts[i + 1];
+      if (!p0 || !p1) continue;
+      const seg = Math.max(0, Math.min(1, head - i));
+      if (seg <= 0) continue;
+      line(d, [p0.x, p0.y], [p0.x + (p1.x - p0.x) * seg, p0.y + (p1.y - p0.y) * seg], CYAN, 1.6);
+    }
+  }
+}
+
 /* ------------------------------------------------------------ projection -- */
 /**
  * THE PROJECTION.
@@ -515,6 +615,7 @@ export function drawAll(d: DrawCtx) {
   drawYard(d);
   drawQuay(d);
   drawCranes(d);
+  drawAgents(d);            // the agents working their own ground
   drawProjection(d);        // under the pucks, over the world
   drawHotspots(d);
   if (!d.schematic) drawWeather(d);

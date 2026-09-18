@@ -52,7 +52,7 @@ export function PlateStage() {
             ctx, w, h, fit, calib: PLATES[f.scenario.plate], frame: f, scen: f.scenario,
             t: performance.now(), schematic: st.schematic,
             hovered: st.hoveredStep, active: st.activeStep, revealed: st.revealed,
-            planT: st.planT, previewT: st.previewT,
+            planT: st.planT, previewT: st.previewT, phase: st.solvePhase,
           });
         }
       }
