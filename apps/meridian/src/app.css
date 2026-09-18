@@ -676,3 +676,29 @@
 /* the punchline gets the room the options just gave up */
 .cmp--won .cmp-delta { display: grid; gap: 7px; justify-items: start; padding: 4px 0 2px; }
 .cmp--won .cmp-sub { font-size: 10.5px; color: var(--m-ink-2); }
+
+/* ============================================================ LEGIBILITY ==
+   Anything drawn straight onto the plate needs its own separation — the plate
+   is bright at the horizon and dark in the yard, so no single colour works
+   without it. */
+.plate-tag, .aud-lead, .viewbar button { text-shadow: 0 1px 10px rgba(0,0,0,.9); }
+.scen-title p { color: var(--m-ink); opacity: .9; font-size: 12.5px; }
+.aud-label { color: var(--m-ink-2); }
+.aud-item[data-sev="0"] .aud-label { color: var(--m-ink-3); }
+
+/* panel interiors: the small print is the product, so it gets read */
+.agw-mandate, .agw-sum, .agw-note, .agw-rej em { color: var(--m-ink-3); }
+.dist-legend li { color: var(--m-ink-3); }
+.dist-legend li[data-passed="true"] { color: var(--m-ink); }
+.dist-cap, .dist-opt-note { color: var(--m-ink-2); }
+.acard-why { color: var(--m-ink-2); }
+.cascade-axis span { color: var(--m-ink-3); }
+.cascade-scale { color: var(--m-ink-3); }
+.cascade-link span { color: var(--m-ink-3); }
+.cascade-link[data-on="true"] span { color: var(--m-ink-2); }
+.cmp-hd, .cmp-label { color: var(--m-ink-2); }
+.cmp-base { color: var(--m-ink-2); }
+.scen-tab-l em { color: var(--m-ink-3); }
+.m-tab:not([aria-selected="true"]) .scen-tab-l b { color: var(--m-ink-2); }
+.outcome-gain i, .commit-gain i { color: var(--m-ink-3); }
+.adaptstrip-auth { color: var(--m-ink-3); }

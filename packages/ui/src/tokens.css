@@ -14,18 +14,25 @@
   --m-surface:     #0A141D;   /* solid raised surface */
   --m-surface-2:   #0F1D28;
 
-  /* -- glass: every HUD panel is one of these three ----------------------- */
-  --m-glass:       rgba(9, 18, 26, 0.72);
-  --m-glass-hi:    rgba(16, 30, 41, 0.82);
-  --m-glass-line:  rgba(124, 196, 214, 0.16);
-  --m-glass-line-hi: rgba(124, 196, 214, 0.34);
+  /* -- glass: every HUD panel is one of these three -----------------------
+     Opacity carries real work here. These panels sit over a bright photographic
+     plate, not a dark render, so glass that was legible in the schematic build
+     was washing out over the sky. */
+  --m-glass:       rgba(9, 18, 26, 0.84);
+  --m-glass-hi:    rgba(16, 30, 41, 0.90);
+  --m-glass-line:  rgba(124, 196, 214, 0.22);
+  --m-glass-line-hi: rgba(124, 196, 214, 0.42);
   --m-blur:        blur(14px) saturate(1.25);
 
-  /* -- ink ---------------------------------------------------------------- */
-  --m-ink:         #DCEDF3;
-  --m-ink-2:       #94ADB8;
-  --m-ink-3:       #5D7581;
-  --m-ink-4:       #3A4B55;
+  /* -- ink ----------------------------------------------------------------
+     The ramp is deliberately shallow at the bottom. ink-3 and ink-4 carry most
+     of the reading in this product — unit labels, mandates, captions, axis
+     ticks — and the original values were set against a dark render. Over a lit
+     plate they disappeared, which is a legibility bug, not a style. */
+  --m-ink:         #E9F5F9;
+  --m-ink-2:       #B3C8D2;
+  --m-ink-3:       #8A9FAB;
+  --m-ink-4:       #6E828D;
 
   /* -- the four hues that mean something ---------------------------------- */
   --m-cyan:        #3FD9EC;   /* STRUCTURE — the twin, the system, selection */
