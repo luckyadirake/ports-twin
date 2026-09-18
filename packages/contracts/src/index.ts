@@ -5,6 +5,7 @@ export * from './landside';
 export * from './peer';
 export * from './lens';
 export * from './plate';
+export * from './solve';
 export * from './scenario';
 export * from './frame';
 export * from './commands';

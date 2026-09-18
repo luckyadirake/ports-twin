@@ -2,6 +2,7 @@ import type { Fact, DecisionBand, Unit } from './fact';
 import type { KpiSet } from './frame';
 import type { PlateId } from './plate';
 import type { LensId, OverlayId } from './lens';
+import type { SolveResult } from './solve';
 
 export type ScenarioId = 'monsoon-sway' | 'vessel-delay' | 'agv-reroute' | 'jit-arrival';
 export type Scale = 'ASSET' | 'FLEET' | 'TERMINAL' | 'PORT';
@@ -141,6 +142,14 @@ export interface ScenarioState {
   readonly polarity: 'disturbance' | 'improvement';
   /** only meaningful on an improvement scenario */
   readonly optimum: Optimum | null;
+  /** what the agents searched, and what they rejected, to produce `adaptations` */
+  readonly solve: SolveResult;
+  /** chain links the committed plan actually repairs — drives the stage */
+  readonly fixed: readonly number[];
+  /** crane count the committed plan works the call with, for the stage */
+  readonly cranes: number;
+  /** unproductive moves under the committed plan, for the stage */
+  readonly dig: number;
   /** the insert clip that belongs to this scenario's key beat */
   readonly insert: string;
 }

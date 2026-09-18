@@ -54,6 +54,8 @@ export interface DrawCtx {
   hovered: number | null; // chain step index
   active: number | null;  // the opened hotspot
   revealed: number;       // how many cascade links have fired
+  /** 0 → 1 as the stage eases from the do-nothing state onto the committed plan */
+  planT: number;
 }
 
 /** Screen position of every chain hotspot, for drawing AND for hit-testing. */
@@ -173,22 +175,34 @@ export function drawQuay(d: DrawCtx) {
 /* ---------------------------------------------------------------- cranes -- */
 export function drawCranes(d: DrawCtx) {
   const { calib: k, frame, scen } = d;
-  const rate = scen.comparison.chosen
+  const committed = scen.comparison.chosen !== null;
+  const rate = committed
     ? scen.comparison.adapted.movesPerHour.value
     : scen.comparison.baseline.movesPerHour.value;
   const nominal = 32;
   const deg = rate / nominal;
+  /* The cranes the committed plan actually works this call with. Anything
+     beyond the baseline count is BORROWED from elsewhere on the quay, and is
+     drawn as such — a plan that costs somebody else something should look
+     like it does. */
+  const baseCranes = scen.id === 'vessel-delay' ? 4 : k.craneX.length;
+  const working = committed
+    ? Math.round(baseCranes + (scen.cranes - baseCranes) * d.planT)
+    : baseCranes;
 
   k.craneX.forEach((cx, i) => {
     const x = PX(d, cx), y = PY(d, k.railY);
     const health = frame.assets[i];
     const hot = health ? health.windingTempC > health.envelope.tempC : false;
-    const col = hot ? RED : deg < 0.7 ? AMBER : CYAN;
+    const onCall = i < working;
+    const borrowed = onCall && i >= baseCranes;
+    const col = hot ? RED : borrowed ? MINT : deg < 0.7 ? AMBER : CYAN;
 
     // bracket around the crane base
     const c = d.ctx;
     c.save();
-    c.strokeStyle = col; c.lineWidth = 1.4;
+    c.globalAlpha = onCall ? 1 : 0.28;
+    c.strokeStyle = col; c.lineWidth = borrowed ? 2 : 1.4;
     const bw = Math.max(15, d.fit.sx * 0.016), bh = 13;
     c.beginPath();
     c.moveTo(x - bw, y - bh); c.lineTo(x - bw, y + 4); c.lineTo(x - bw + 6, y + 4);
@@ -208,6 +222,9 @@ export function drawCranes(d: DrawCtx) {
     }
     c.restore();
 
+    if (borrowed) {
+      label(d, 'borrowed · T1', x, y + 20, MINT, 8.5, 'center');
+    }
     if (i === 3 || d.schematic) {
       label(d, `AQC-10${i + 1} · ${(rate).toFixed(0)}`, x, y - bh - (amp > 0.02 ? 44 : 12), col, 9, 'center');
     }
@@ -219,7 +236,13 @@ export function drawYard(d: DrawCtx) {
   const { calib: k, scen } = d;
   const c = d.ctx;
   const BLOCKS = 9;
-  const digHot = scen.id === 'vessel-delay' ? Math.min(1, scen.disturbance.value / 20) : 0.18;
+  /* Heat is the modelled dig, not the slider. A pre-marshalling plan therefore
+     visibly cools the block, because the number behind it moved first. */
+  const baseDig = scen.comparison.baseline.yardDigMoves.value;
+  const planDig = baseDig + (scen.dig - baseDig) * d.planT;
+  const norm = (v: number) => Math.max(0.05, Math.min(1, (v - 700) / 1000));
+  const digHot = scen.id === 'jit-arrival' || scen.id === 'vessel-delay' ? norm(planDig) : 0.18;
+  const ghost = scen.comparison.chosen !== null && Math.abs(scen.dig - baseDig) > 30;
 
   for (let i = 0; i < BLOCKS; i++) {
     const u0 = i / BLOCKS + 0.012, u1 = (i + 1) / BLOCKS - 0.012;
@@ -240,8 +263,22 @@ export function drawYard(d: DrawCtx) {
     c.stroke();
     c.restore();
     if (isTarget) {
+      // the do-nothing state, left behind in outline — both futures at once
+      if (ghost) {
+        c.save();
+        c.setLineDash([3, 4]); c.strokeStyle = 'rgba(255,154,60,.45)'; c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(q[0]![0], q[0]![1]);
+        for (let j = 1; j < q.length; j++) c.lineTo(q[j]![0], q[j]![1]);
+        c.closePath(); c.stroke();
+        c.restore();
+      }
       const mid = P(d, yardPoint(k, (u0 + u1) / 2, 0.42));
-      label(d, `3C · dig ${Math.round(1340 * (0.5 + digHot))}`, mid[0], mid[1], AMBER, 9.5, 'center');
+      const cool = ghost && scen.dig < baseDig;
+      label(d, `3C · dig ${Math.round(planDig).toLocaleString('en-SG')}`, mid[0], mid[1], cool ? MINT : AMBER, 9.5, 'center');
+      if (ghost) {
+        label(d, `was ${Math.round(baseDig).toLocaleString('en-SG')}`, mid[0], mid[1] + 12, 'rgba(255,154,60,.6)', 8.5, 'center');
+      }
     }
   }
 
@@ -272,9 +309,11 @@ export function drawYard(d: DrawCtx) {
 export function drawHotspots(d: DrawCtx) {
   const c = d.ctx;
   const pts = hotspots(d.fit, d.scen.chain, d.w, d.h);
+  const fixed = new Set(d.scen.fixed);
   pts.forEach(({ i, x, y, tx, ty, off }) => {
     const step = d.scen.chain[i]!;
-    const col = SEV[step.severity];
+    const repaired = fixed.has(i) && d.planT > 0.4;
+    const col = repaired ? MINT : SEV[step.severity];
     const on = i < d.revealed;
     const hot = d.hovered === i || d.active === i;
     const age = d.revealed > i ? 1 : 0;
@@ -305,11 +344,11 @@ export function drawHotspots(d: DrawCtx) {
     c.fillStyle = 'rgba(4,10,16,.82)'; c.fill();
     c.strokeStyle = col; c.lineWidth = hot ? 2.2 : 1.6; c.stroke();
 
-    // number
+    // number — or a tick, once the committed plan has repaired this link
     c.fillStyle = col;
     c.font = `700 ${hot ? 12 : 11}px "IBM Plex Mono", monospace`;
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(String(i + 1), x, y + 0.5);
+    c.fillText(repaired ? '✓' : String(i + 1), x, y + 0.5);
 
     // on hover, name it on the plate
     if (hot) {

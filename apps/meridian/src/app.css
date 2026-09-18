@@ -517,3 +517,61 @@
 .cascade--compact .cascade-dot { width: 11px; height: 11px; }
 .cascade--compact .cascade-link span { display: none; }
 .cascade--compact .cascade-axis span { font-size: 8px; }
+
+/* ========================================================== AGENT WORKLOG ==
+   What the agents did, while they are doing it. The counters are real search
+   counts and the rejections are real conflicts — the only styling job here is
+   to make that legible in about two seconds. */
+.agw {
+  border: 1px solid var(--m-glass-line); border-radius: var(--m-r);
+  background: rgba(63,217,236,.035); padding: 8px 9px 9px; margin-bottom: 9px;
+}
+.agw[data-running="true"] { border-color: rgba(63,217,236,.4); }
+.agw-hd { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.agw-sum { font-size: 8.5px; color: var(--m-ink-4); letter-spacing: .04em; }
+.agw-run {
+  margin-left: auto; font-size: 8.5px; letter-spacing: .16em; color: var(--m-ink-3);
+  border: 1px solid var(--m-glass-line); border-radius: 2px; padding: 2px 7px;
+}
+.agw-run:hover { color: var(--m-cyan); border-color: var(--m-cyan); }
+
+.agw-beats { display: flex; gap: 3px; margin-bottom: 8px; }
+.agw-beat {
+  flex: 1; text-align: center; font-size: 7.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--m-ink-4); padding: 3px 0 4px;
+  border-top: 2px solid var(--m-glass-line); transition: color 200ms, border-color 200ms;
+}
+.agw-beat[data-on="true"] { color: var(--m-ink-2); border-top-color: var(--m-cyan); }
+.agw-beat[data-now="true"] {
+  color: var(--m-cyan); border-top-color: var(--m-cyan);
+  box-shadow: 0 -2px 10px -2px var(--m-cyan);
+}
+
+.agw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.agw-agent {
+  display: grid; grid-template-columns: 8px 58px 1fr auto; gap: 6px;
+  align-items: baseline; font-size: 9.5px; color: var(--m-ink-2);
+}
+.agw-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--m-cyan);
+  align-self: center; box-shadow: 0 0 6px var(--m-cyan);
+}
+.agw-agent[data-dark="true"] { color: var(--m-ink-4); }
+.agw-agent[data-dark="true"] .agw-dot { background: var(--m-ink-4); box-shadow: none; }
+.agw-name { font-weight: 600; }
+.agw-mandate {
+  font-size: 8.5px; color: var(--m-ink-4); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.agw-n { font-size: 10px; color: var(--m-cyan); font-variant-numeric: tabular-nums; }
+.agw-agent[data-dark="true"] .agw-n { color: var(--m-ink-4); }
+
+.agw-rej { list-style: none; margin: 8px 0 0; padding: 7px 0 0; display: grid; gap: 5px;
+  border-top: 1px solid var(--m-glass-line); }
+.agw-rej li { display: grid; grid-template-columns: 11px 1fr; gap: 5px; align-items: baseline; }
+.agw-x { color: var(--m-red); font-size: 10px; }
+.agw-rej b { display: block; font-size: 9.5px; font-weight: 600; color: var(--m-ink-2); }
+.agw-rej em { display: block; font-style: normal; font-size: 8.5px; line-height: 1.45; color: var(--m-ink-4); }
+.agw-note { font-size: 8.5px; color: var(--m-ink-4); margin: 7px 0 0; letter-spacing: .03em; }
+.agw-pending { font-size: 9px; color: var(--m-ink-4); letter-spacing: .1em; padding: 10px 2px; }
+.agw-n i { font-style: normal; color: var(--m-ink-4); }

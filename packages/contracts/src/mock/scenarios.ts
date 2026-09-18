@@ -12,6 +12,41 @@ import type {
   KpiSet, SimInstant, DecisionBand, LensId, AudienceSignal, LensFacet, Threshold,
 } from '../index';
 import { fact, bandFor, DEFAULT_BANDS } from '../fact';
+import { solve, type AgentSpec, type Solved } from './solver';
+import type { AgentId } from '../solve';
+
+/** The cast, with the ones that have no stake in a disturbance shown dark. */
+const CAST: Record<AgentId, { label: string; mandate: string }> = {
+  berth: { label: 'Berth', mandate: 'crane split, berth windows, re-berthing' },
+  yard: { label: 'Yard', mandate: 'pre-marshalling, stack depth, block sequencing' },
+  landside: { label: 'Landside', mandate: 'truck appointments, gate flow, re-offers' },
+  fleet: { label: 'Fleet', mandate: 'horizontal transport, pooling, charging' },
+  voyage: { label: 'Voyage', mandate: 'passage speed, berth window publication' },
+};
+const spec = (
+  id: AgentId, engaged: boolean,
+  space: readonly { id: string; label: string; apply: string | null }[],
+): AgentSpec => ({ id, label: CAST[id].label, mandate: CAST[id].mandate, engaged, space });
+
+/**
+ * Where the options are already a short, well-understood list, the agents still
+ * price every one of them through the same coupled models — so the ranking and
+ * the recommendation are searched rather than asserted, even when the space is
+ * small enough to write down.
+ */
+function solveCurated(
+  lens: LensId, baseline: KpiSet, run: (id: string | null) => KpiSet,
+  groups: readonly { agent: AgentId; ids: readonly { id: string; label: string }[] }[],
+  conflicts: readonly (readonly [string, string, string])[] = [],
+): Solved {
+  const specs = (Object.keys(CAST) as AgentId[]).map(a => {
+    const g = groups.find(x => x.agent === a);
+    return spec(a, g !== undefined, g
+      ? [{ id: 'noop', label: 'Do nothing', apply: null }, ...g.ids.map(x => ({ ...x, apply: x.id }))]
+      : []);
+  });
+  return solve({ lens, baseline, run, specs, conflicts });
+}
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const SEC = 1000, MIN = 60 * SEC, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -72,10 +107,17 @@ function comparison(
 ): Comparison {
   const dH = baseline.vesselTurnaroundH.value - adapted.vesselTurnaroundH.value;
   const dTeu = baseline.teuAtRisk.value - adapted.teuAtRisk.value;
+  /* An unproductive move is not free: ASC time, energy and the quay it starves.
+     Without this a pre-marshalling plan saves 362 moves and prices at zero,
+     which is the kind of silence that makes an operator distrust the panel. */
+  const dMoves = baseline.yardDigMoves.value - adapted.yardDigMoves.value;
   const L = ['EV-DIFF-1'];
   return {
     baseline, adapted, adaptedB, chosen, chosenB,
-    deltaSgd: fact(baseline.demurrageExposure.value - adapted.demurrageExposure.value + dH * 21400 + extraSgd, 'SGD', 0.76, 'diff-v1', at, L),
+    deltaSgd: fact(
+      baseline.demurrageExposure.value - adapted.demurrageExposure.value
+      + dH * 21400 + dMoves * 38 + extraSgd,
+      'SGD', 0.76, 'diff-v1', at, L),
     deltaTeu: fact(dTeu, 'TEU', 0.75, 'diff-v1', at, L),
     deltaHours: fact(dH, 'h', 0.8, 'diff-v1', at, L),
   };
@@ -434,6 +476,18 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('monsoon-sway', 0, 65, 1),
     polarity: 'disturbance', optimum: null,
+    solve: solveCurated(lens, baseline, run, [
+      { agent: 'berth', ids: [
+        { id: 'sheltered-berth', label: 'Shift the call to the sheltered berth' },
+        { id: 'stop-quay', label: 'Stop the quay and take the delay' },
+      ] },
+      { agent: 'yard', ids: [{ id: 'light-windward', label: 'Light boxes to the windward cranes' }] },
+    ], [
+      ['sheltered-berth', 'stop-quay', 'the call is already moving behind the breakwater — stopping the quay as well pays the same delay twice'],
+    ]).result,
+    fixed: chosen === 'sheltered-berth' ? [2, 3] : chosen === 'light-windward' ? [1] : [],
+    cranes: chosen === 'stop-quay' ? 0 : FLEET.cranes,
+    dig: adapted.yardDigMoves.value,
     insert: 'inserts/sway.mp4',
   };
 }
@@ -447,12 +501,18 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
   const hitB = connectionsHit(delayH);
   const slotsB = Math.round(delayH * 24);
 
+  /**
+   * The action space the berth, yard and landside agents search. Each id is a
+   * real setting of the same model, not a label — which is what lets an agent
+   * find "six cranes" when nobody wrote a six-crane option.
+   */
   const run = (id: string | null) => {
     let craneCount = cranes, shift = 0, dig = 0, recovered = 0;
-    if (id === 'surge-split') craneCount = 7;
+    if (id !== null && id.startsWith('surge-')) craneCount = Number(id.slice(6));
     if (id === 'reberth-t3') shift = -collisionB;
-    if (id === 'presequence') dig = -digRecoverable(delayH);
-    if (id === 'reoffer-slots') recovered = 294;
+    if (id === 'reberth-t4') shift = -collisionB * 0.6;
+    if (id !== null && id.startsWith('premarshal-')) dig = -digRecoverable(delayH) * (Number(id.slice(11)) / 100);
+    if (id !== null && id.startsWith('reoffer-')) recovered = Math.round(slotsB * (Number(id.slice(8)) / 100));
     const turn = movesRemaining / (NOMINAL_RATE * craneCount);
     const effective = Math.max(0, delayH - (turnNominal - turn));
     const hit = connectionsHit(effective);
@@ -526,36 +586,94 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     },
   ];
 
-  const adaptations: Adaptation[] = [
-    {
-      id: 'surge-split', label: 'Surge the crane split from 4 to 7',
-      rationale: 'Throw every available crane at the call and claw the turnaround back. Costs the cranes working the feeder at T1.',
-      costs: [fact(3, 'none', 0.9, 'berth-solver-v2', at, [])],
-      saves: [fact(turnNominal - movesRemaining / (NOMINAL_RATE * 7), 'h', 0.87, 'berth-solver-v2', at, [])],
-      band: band(0.9, 0.3, 0.9), recommended: delayH >= 6 && delayH < 16,
-    },
-    {
-      id: 'presequence', label: 'Pre-marshal 3C in the 18:00 lull',
-      rationale: `Shift the ${blockersFor(delayH).toLocaleString('en-SG')} blockers while the ASCs sit at 26% utilisation, so the parcel is clean when the vessel does arrive. The longer the call is late, the more there is to shift.`,
-      costs: [fact(blockersFor(delayH), 'moves', 0.91, 'stack-v3', at, [])],
-      saves: [fact(digRecoverable(delayH), 'moves', 0.88, 'stack-v3', at, [])],
-      band: band(0.91, 0.12, 0.95), recommended: digRecoverable(delayH) >= 150,
-    },
-    {
-      id: 'reoffer-slots', label: 'Re-offer the gate slots to the hauliers',
-      rationale: 'Price and re-offer the lapsed appointments, weighted by connection risk and free-time exposure. The offer crosses a party boundary, so a human confirms it.',
-      costs: [fact(0, 'moves', 0.9, 'gate-v2', at, [])],
-      saves: [fact(294, 'slots', 0.82, 'gate-v2', at, [])],
-      band: band(0.82, 0.62, 0.7), recommended: delayH >= 10,
-    },
-    {
-      id: 'reberth-t3', label: 'Re-berth the following call to T3',
-      rationale: 'Give the overrun somewhere to go rather than compressing it. Costs a shift of the feeder programme.',
-      costs: [fact(2.4, 'h', 0.84, 'berth-solver-v2', at, [])],
-      saves: [fact(collisionB, 'h', 0.85, 'berth-solver-v2', at, [])],
-      band: band(0.84, 0.45, 0.6), recommended: delayH >= 16,
-    },
+  /* ------------------------------------------------- the agents solve it -- */
+  const AGENTS: AgentSpec[] = [
+    spec('berth', true, [
+      { id: 'noop', label: 'Leave the split alone', apply: null },
+      ...[3, 4, 5, 6, 7].map(n => ({ id: `surge-${n}`, label: `Work the call with ${n} cranes`, apply: `surge-${n}` })),
+      { id: 'reberth-t3', label: 'Re-berth the following call to T3', apply: 'reberth-t3' },
+      { id: 'reberth-t4', label: 'Re-berth the following call to T4', apply: 'reberth-t4' },
+    ]),
+    spec('yard', digRecoverable(delayH) > 40, [
+      { id: 'noop', label: 'Dig it out on the day', apply: null },
+      ...[40, 60, 80, 100].map(p => ({ id: `premarshal-${p}`, label: `Pre-marshal ${p}% of 3C in the lull`, apply: `premarshal-${p}` })),
+    ]),
+    spec('landside', slotsB > 0, [
+      { id: 'noop', label: 'Let the appointments lapse', apply: null },
+      ...[25, 50, 75, 100].map(p => ({ id: `reoffer-${p}`, label: `Re-offer ${p}% of the lapsed slots`, apply: `reoffer-${p}` })),
+    ]),
+    spec('fleet', false, []),
+    spec('voyage', false, []),
   ];
+
+  /* Plans that cannot both happen. A curated list can never produce one of
+     these, which is exactly why showing it resolved is worth the screen. */
+  const CONFLICTS: (readonly [string, string, string])[] = [
+    // a surged quay and a deep pre-marshalling pass want the same ASCs
+    ...[6, 7].flatMap(n => [80, 100].map(pct => [
+      `surge-${n}`, `premarshal-${pct}`,
+      `${n} cranes on the call leaves no ASC capacity for a ${pct}% pre-marshalling pass in the same lull`,
+    ] as const)),
+    // and a call that is moving cannot have its old slots re-sold
+    ...['reberth-t3', 'reberth-t4'].flatMap(r => [75, 100].map(pct => [
+      r, `reoffer-${pct}`,
+      `the call is moving to ${r.slice(-2).toUpperCase()} — re-offering ${pct}% of the slots against the T2 window would send hauliers to the wrong berth`,
+    ] as const)),
+  ];
+
+  const solved: Solved = solve({ lens, baseline, run, specs: AGENTS, conflicts: CONFLICTS });
+
+  /** Turn a searched action into something an operator can read and price. */
+  const describe = (id: string): Adaptation => {
+    const k = run(id);
+    const saveH = baseline.vesselTurnaroundH.value - k.vesselTurnaroundH.value;
+    if (id.startsWith('surge-')) {
+      const n = Number(id.slice(6));
+      return {
+        id, label: `Surge the crane split from ${cranes} to ${n}`,
+        rationale: n > cranes
+          ? `Put ${n - cranes} more cranes on the call and claw the turnaround back. Costs the cranes working the feeder at T1.`
+          : `Work the call with ${n} cranes and release the rest of the quay. Slower here, cheaper elsewhere.`,
+        costs: [fact(Math.abs(n - cranes), 'none', 0.9, 'berth-solver-v2', at, [])],
+        saves: [fact(Math.max(0, saveH), 'h', 0.87, 'berth-solver-v2', at, [])],
+        band: band(0.9, 0.3, 0.9), recommended: false,
+      };
+    }
+    if (id.startsWith('premarshal-')) {
+      const p = Number(id.slice(11)) / 100;
+      return {
+        id, label: `Pre-marshal ${Math.round(p * 100)}% of 3C in the 18:00 lull`,
+        rationale: `Shift ${Math.round(blockersFor(delayH) * p).toLocaleString('en-SG')} blockers while the ASCs sit at 26% utilisation, so the parcel is clean when the vessel does arrive.`,
+        costs: [fact(Math.round(blockersFor(delayH) * p), 'moves', 0.91, 'stack-v3', at, [])],
+        saves: [fact(Math.round(digRecoverable(delayH) * p), 'moves', 0.88, 'stack-v3', at, [])],
+        band: band(0.91, 0.12, 0.95), recommended: false,
+      };
+    }
+    if (id.startsWith('reoffer-')) {
+      const p = Number(id.slice(8)) / 100;
+      return {
+        id, label: `Re-offer ${Math.round(p * 100)}% of the lapsed slots`,
+        rationale: 'Price and re-offer the lapsed appointments, weighted by connection risk and free-time exposure. The offer crosses a party boundary, so a human confirms it.',
+        costs: [fact(0, 'moves', 0.9, 'gate-v2', at, [])],
+        saves: [fact(Math.round(slotsB * p), 'slots', 0.82, 'gate-v2', at, [])],
+        band: band(0.82, 0.62, 0.7), recommended: false,
+      };
+    }
+    const t4 = id === 'reberth-t4';
+    return {
+      id, label: `Re-berth the following call to ${t4 ? 'T4' : 'T3'}`,
+      rationale: t4
+        ? 'T4 is further out and only absorbs part of the overrun, but it is free tonight. Costs a longer feeder run.'
+        : 'Give the overrun somewhere to go rather than compressing it. Costs a shift of the feeder programme.',
+      costs: [fact(t4 ? 3.6 : 2.4, 'h', 0.84, 'berth-solver-v2', at, [])],
+      saves: [fact(collisionB * (t4 ? 0.6 : 1), 'h', 0.85, 'berth-solver-v2', at, [])],
+      band: band(0.84, 0.45, 0.6), recommended: false,
+    };
+  };
+
+  const adaptations: Adaptation[] = solved.accepted.slice(0, 4).map((id, i) => ({
+    ...describe(id), recommended: i === 0,
+  }));
 
   const audiences: AudienceSignal[] = [
     sig('operations', collisionB > 0 ? 3 : 1, collisionB > 0
@@ -564,9 +682,10 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     sig('commercial', hitB.count ? 3 : delayH > 2 ? 2 : 0, hitB.count
       ? `${hitB.count} connections and ${slotsB} gate appointments to renegotiate.`
       : 'Windows hold, but the gate book is drifting.'),
-    sig('engineering', chosen === 'surge-split' ? 2 : 1, chosen === 'surge-split'
-      ? 'Seven cranes on one call is three extra machines into duty cycle you had not planned.'
-      : 'No unusual duty. Business as usual.'),
+    sig('engineering', chosen !== null && chosen.startsWith('surge-') ? 2 : 1,
+      chosen !== null && chosen.startsWith('surge-')
+        ? `${chosen.slice(6)} cranes on one call is duty cycle you had not planned for.`
+        : 'No unusual duty. Business as usual.'),
     sig('safety', delayH >= 12 ? 2 : 0, delayH >= 12
       ? 'Discharge now runs through the night shift. Fatigue exposure and lighting both change.'
       : 'No change to exposure.'),
@@ -587,7 +706,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
       headline: 'Berth, cranes and yard all have to move together.',
       kpis: ['vesselTurnaroundH', 'movesPerHour', 'yardDigMoves', 'truckTurnTimeMin'],
       overlays: ['berthWindows', 'digHeat', 'exceptionPins'],
-      allowed: ['surge-split', 'presequence', 'reberth-t3'],
+      allowed: ['surge-', 'premarshal-', 'reberth-'],
       retell: {
         1: collisionB > 0
           ? { title: 'Your berth plan breaks', detail: `T2 overruns by ${collisionB.toFixed(1)} h and the following call has nowhere to go.` }
@@ -601,7 +720,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
       headline: 'Everything you promised on this call is now a conversation.',
       kpis: ['connectionsAtRisk', 'teuAtRisk', 'demurrageExposure', 'gateSlotsForfeited'],
       overlays: ['connectionThreads', 'freeTimeRings', 'pharmaThread'],
-      allowed: ['reoffer-slots'],
+      allowed: ['reoffer-'],
       retell: {
         3: { title: 'Customers are already on the road', detail: `${slotsB} hauliers hold appointments for a vessel that is not here. They find out at the gate unless you tell them.` },
         4: { title: 'The calls you have to make', detail: hitB.count ? `${hitB.count} connections, ${hitB.teu.toLocaleString('en-SG')} TEU.` : 'None yet.' },
@@ -633,6 +752,18 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('vessel-delay', 0, 24, 1),
     polarity: 'disturbance', optimum: null,
+    solve: solved.result,
+    /* what the committed plan repairs, so the stage can show it rather than
+       assert it: the links it fixes, the cranes it works with, the dig it
+       leaves behind */
+    fixed: [
+      ...(chosen !== null && chosen.startsWith('reberth-') ? [1] : []),
+      ...(chosen !== null && chosen.startsWith('premarshal-') ? [2] : []),
+      ...(chosen !== null && chosen.startsWith('reoffer-') ? [3] : []),
+      ...(chosen !== null && chosen.startsWith('surge-') && Number(chosen.slice(6)) > cranes ? [1, 4] : []),
+    ],
+    cranes: chosen !== null && chosen.startsWith('surge-') ? Number(chosen.slice(6)) : cranes,
+    dig: adapted.yardDigMoves.value,
     insert: 'inserts/vessel.mp4',
   };
 }
@@ -817,6 +948,18 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('agv-reroute', 0, 12, 1),
     polarity: 'disturbance', optimum: null,
+    solve: solveCurated(lens, baseline, run, [
+      { agent: 'fleet', ids: [
+        { id: 'repool', label: 'Re-pool the fleet across fewer cranes' },
+        { id: 'landside-lane', label: 'Route via the landside lane' },
+        { id: 'stagger-charge', label: 'Stagger charging out of the peak window' },
+      ] },
+    ], [
+      ['repool', 'landside-lane', 'the pool is already concentrated on four cranes — the landside lane would route vehicles away from the cranes that need them'],
+    ]).result,
+    fixed: chosen === 'repool' ? [1, 2] : chosen === 'stagger-charge' ? [3] : chosen === 'landside-lane' ? [2] : [],
+    cranes: chosen === 'repool' ? 4 : FLEET.cranes,
+    dig: adapted.yardDigMoves.value,
     insert: 'inserts/agv.mp4',
   };
 }
@@ -1171,6 +1314,18 @@ function jitArrival(v: number, lens: LensId, chosen: string | null, chosenB: str
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: jitThresholds(),
     insert: 'inserts/economical.mp4',
+    solve: solveCurated(lens, baseline, run, [
+      { agent: 'voyage', ids: [
+        { id: 'firm-window', label: 'Publish a firm berth window' },
+        { id: 'indicative-window', label: 'Publish indicative, with automatic re-offer' },
+      ] },
+      { agent: 'yard', ids: [] },
+    ], [
+      ['firm-window', 'indicative-window', 'a window is either committed or it is not — publishing both to the same carrier is not a plan'],
+    ]).result,
+    fixed: chosen !== null ? [2, 3, 4, 5, 6, 7] : [],
+    cranes: VESSEL.cranesDefault,
+    dig: adapted.yardDigMoves.value,
     polarity: 'improvement',
     optimum: mine === null ? null : {
       value: mine,
