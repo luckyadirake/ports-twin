@@ -117,7 +117,8 @@
   border: 1px solid var(--m-glass-line); border-radius: var(--m-r); padding: 6px 8px; font-size: 10.5px; }
 
 /* ---------------------------------------------------------------- compare -- */
-.cmp-hd, .cmp-row { display: grid; grid-template-columns: 1fr 62px 62px; gap: 8px; align-items: baseline; }
+.cmp-hd, .cmp-row { display: grid; grid-template-columns: minmax(0,1fr) 62px 62px; gap: 8px;
+  align-items: baseline; }
 .cmp-hd { font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--m-ink-4);
   padding-bottom: 5px; border-bottom: var(--m-rule); }
 .cmp-row { font-size: 11.5px; padding: 3.5px 0; }
@@ -621,3 +622,57 @@
 
 .acard[data-live="true"] { border-color: var(--m-cyan); background: var(--m-cyan-dim); }
 .acard-num .sim { color: var(--m-cyan); letter-spacing: .1em; text-transform: uppercase; }
+
+/* ============================================================== OUTCOME ====
+   The loud half of committing. The port keeps its quiet data layer; this says
+   out loud what the plan bought, and shows what it looks like on the ground. */
+.outcome {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 12;
+  display: flex; align-items: center; gap: 14px; max-width: calc(100% - 640px);
+  padding: 8px 10px 8px 15px; border-radius: var(--m-r-lg);
+  background: rgba(4,14,14,.9); border: 1px solid var(--m-mint);
+  box-shadow: 0 0 34px -8px var(--m-mint), 0 18px 40px -20px #000;
+  backdrop-filter: var(--m-blur); -webkit-backdrop-filter: var(--m-blur);
+}
+.outcome-tag { font-size: 8px; letter-spacing: .18em; color: var(--m-mint); white-space: nowrap; }
+.outcome-line { font-size: 11.5px; color: var(--m-ink-2); max-width: 300px; line-height: 1.3; }
+.outcome-gains { display: flex; gap: 14px; padding-left: 14px; border-left: 1px solid var(--m-glass-line); }
+.outcome-gain { display: grid; gap: 1px; }
+.outcome-gain s { color: var(--m-ink-4); text-decoration: line-through; font-size: 9.5px; }
+.outcome-gain em { font-style: normal; color: var(--m-mint); font-size: 15px; font-weight: 700; }
+.outcome-gain i { font-style: normal; color: var(--m-ink-4); font-size: 8px; letter-spacing: .1em;
+  text-transform: uppercase; white-space: nowrap; }
+.outcome-undo { font-size: 9px; letter-spacing: .16em; color: var(--m-ink-3);
+  border: 1px solid var(--m-glass-line); border-radius: 2px; padding: 7px 10px; }
+.outcome-undo:hover { color: var(--m-ink); border-color: var(--m-ink-3); }
+
+/* the feed — what the committed plan looks like on the ground */
+.feed {
+  position: absolute; right: 318px; top: 146px; z-index: 11;
+  width: 280px; border-radius: var(--m-r); overflow: hidden;
+  border: 1px solid var(--m-mint); background: var(--m-void);
+  box-shadow: 0 0 30px -10px var(--m-mint), 0 16px 34px -18px #000;
+}
+.feed video { display: block; width: 100%; height: auto; }
+.feed-hd {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  font-size: 8px; letter-spacing: .16em; text-transform: uppercase; color: var(--m-mint);
+  background: rgba(4,14,14,.85); border-bottom: 1px solid rgba(69,224,176,.25);
+}
+.feed-hd button { margin-left: auto; color: var(--m-ink-3); font-size: 13px; line-height: 1; padding: 0 2px; }
+.feed-hd button:hover { color: var(--m-ink); }
+.feed-live { width: 5px; height: 5px; border-radius: 50%; background: var(--m-mint);
+  box-shadow: 0 0 7px var(--m-mint); animation: feed-pulse 1.8s infinite; }
+@keyframes feed-pulse { 50% { opacity: .3; } }
+
+/* the comparison, once it has a punchline */
+.m-panel.cmp--won { border-color: var(--m-mint); box-shadow: 0 0 26px -12px var(--m-mint); }
+/* a bolder number must never be allowed to push the panel past the rail */
+.rail .m-panel { max-width: 100%; overflow: hidden; }
+.cmp-label, .cmp-c { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp--won .cmp-delta-v { font-size: 27px; }
+.cmp--won .cmp-c.good { color: var(--m-mint); font-weight: 700; }
+.cmp--won .cmp-row { padding: 5px 0; }
+/* the punchline gets the room the options just gave up */
+.cmp--won .cmp-delta { display: grid; gap: 7px; justify-items: start; padding: 4px 0 2px; }
+.cmp--won .cmp-sub { font-size: 10.5px; color: var(--m-ink-2); }

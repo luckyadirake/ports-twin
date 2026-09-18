@@ -17,6 +17,9 @@ export function ComparePanel() {
   const rows = s.facet.kpis;
   const nameOf = (id: string | null) => s.adaptations.find(a => a.id === id)?.label ?? '—';
   const up = s.polarity === 'improvement';
+  /* once a plan is committed this panel stops being a table and becomes the
+     punchline, so it takes the room to say so */
+  const won = live && c.deltaSgd.value > 0;
 
   const cell = (k: keyof KpiSet, set: KpiSet | null) => {
     if (!set) return <span className="m-num cmp-c">—</span>;
@@ -28,7 +31,10 @@ export function ComparePanel() {
   };
 
   return (
-    <Panel title={up ? 'Today vs committed' : 'Baseline vs adapted'} accent={live} collapsible>
+    <Panel
+      title={up ? 'Today vs committed' : 'Baseline vs adapted'} accent={live} collapsible
+      className={won ? 'cmp--won' : ''}
+    >
       <div className={`cmp-hd m-num ${hasB ? 'three' : ''}`}>
         <span>metric</span>
         <span className="cmp-c">{up ? 'today' : 'do nothing'}</span>

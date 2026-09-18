@@ -24,9 +24,14 @@ export function AdaptPanel() {
   const allowed = s.facet.allowed;
   const permit = (id: string) => allowed.length === 0 || allowed.some(p => id.startsWith(p));
   const solving = phase === 'brief' || phase === 'solve' || phase === 'arbitrate';
+  /* once a plan is committed the decision is made, so the options stop
+     deserving the rail — the comparison is the thing to look at now. The key
+     remounts the panel closed; the operator can still open it back up. */
+  const settled = chosen !== null;
 
   return (
     <Panel
+      key={settled ? 'settled' : 'open'} defaultOpen={!settled}
       title="Adapt" collapsible
       right={<span className="m-num adaptstrip-auth">
         {s.adaptations.filter(a => permit(a.id)).length}/{s.adaptations.length} in your authority

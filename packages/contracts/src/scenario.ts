@@ -175,6 +175,15 @@ export interface ScenarioState {
   readonly dig: number;
   /** the plan being simulated over the port, before anyone commits to it */
   readonly preview: PlanPreview | null;
+  /**
+   * The shot that shows what the COMMITTED plan looks like on the ground. Not a
+   * plate swap — these are shot from their own camera, so they play as a feed
+   * beside the port rather than replacing it, and the registered overlay stays
+   * registered.
+   */
+  readonly afterClip: string | null;
+  /** one line naming what the committed plan bought, for the outcome band */
+  readonly outcome: string | null;
   /** the insert clip that belongs to this scenario's key beat */
   readonly insert: string;
 }

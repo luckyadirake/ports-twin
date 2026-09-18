@@ -242,6 +242,8 @@ const CLIP = {
   /* the upside shots — a port working well, which nothing else in the kit had */
   planroom: 'inserts/planroom.mp4', economical: 'inserts/economical.mp4',
   ontime: 'inserts/ontime.mp4', anchorage: 'inserts/anchorage.mp4',
+  /* what a committed plan looks like on the ground */
+  surge: 'inserts/surge.mp4', gatecleared: 'inserts/gatecleared.mp4',
 } as const;
 
 interface FacetSpec {
@@ -489,6 +491,9 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     cranes: chosen === 'stop-quay' ? 0 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
+    afterClip: chosen === 'sheltered-berth' ? CLIP.berth : chosen === 'light-windward' ? CLIP.derate : null,
+    outcome: chosen === null ? null
+      : `${chosen === 'stop-quay' ? 'quay stopped' : chosen === 'sheltered-berth' ? 'call moved behind the breakwater' : 'load re-sequenced'} · gang rate ${baseline.movesPerHour.value.toFixed(0)} → ${adapted.movesPerHour.value.toFixed(0)} mv/hr`,
     insert: 'inserts/sway.mp4',
   };
 }
@@ -766,6 +771,19 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     cranes: chosen !== null && chosen.startsWith('surge-') ? Number(chosen.slice(6)) : cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
+    afterClip: chosen === null ? null
+      : chosen.startsWith('surge-') ? CLIP.surge
+        : chosen.startsWith('reoffer-') ? CLIP.gatecleared
+          : chosen.startsWith('premarshal-') ? CLIP.dig
+            : CLIP.berth,
+    outcome: chosen === null ? null
+      : chosen.startsWith('surge-')
+        ? `${chosen.slice(6)} cranes on the call · turnaround ${baseline.vesselTurnaroundH.value.toFixed(1)} → ${adapted.vesselTurnaroundH.value.toFixed(1)} h`
+        : chosen.startsWith('premarshal-')
+          ? `pre-marshalled in the lull · dig ${Math.round(baseline.yardDigMoves.value).toLocaleString('en-SG')} → ${Math.round(adapted.yardDigMoves.value).toLocaleString('en-SG')} moves`
+          : chosen.startsWith('reoffer-')
+            ? `slots re-offered · ${Math.round(baseline.gateSlotsForfeited.value - adapted.gateSlotsForfeited.value)} appointments recovered`
+            : `call re-berthed · overrun ${collisionB.toFixed(1)} h absorbed`,
     insert: 'inserts/vessel.mp4',
   };
 }
@@ -963,6 +981,9 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
     cranes: chosen === 'repool' ? 4 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
+    afterClip: chosen === 'stagger-charge' ? CLIP.charging : chosen !== null ? CLIP.agv : null,
+    outcome: chosen === null ? null
+      : `${chosen === 'repool' ? 'fleet re-pooled' : chosen === 'landside-lane' ? 'routed via the landside lane' : 'charging staggered'} · gang rate ${baseline.movesPerHour.value.toFixed(1)} → ${adapted.movesPerHour.value.toFixed(1)} mv/hr`,
     insert: 'inserts/agv.mp4',
   };
 }
@@ -1330,6 +1351,9 @@ function jitArrival(v: number, lens: LensId, chosen: string | null, chosenB: str
     cranes: VESSEL.cranesDefault,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
+    afterClip: chosen === null ? null : CLIP.ontime,
+    outcome: chosen === null ? null
+      : `${chosen === 'firm-window' ? 'firm window published' : 'indicative window published'} · ${adapted.fuelTonnesSaved.value.toFixed(0)} t of bunkers not burned, anchorage wait ${baseline.anchorageWaitH.value.toFixed(1)} → ${adapted.anchorageWaitH.value.toFixed(1)} h`,
     polarity: 'improvement',
     optimum: mine === null ? null : {
       value: mine,

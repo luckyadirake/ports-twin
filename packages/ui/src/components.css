@@ -23,7 +23,11 @@
 .m-panel-hd > span:last-child { font-size: 9px; letter-spacing: .1em; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .m-panel-hd .m-micro { color: var(--m-ink-2); }
-.m-panel-bd { padding: 12px 13px 13px; display: grid; gap: var(--m-gap); }
+/* an explicit single column: the body is a grid, and an `auto` column sizes to
+   the widest child's MAX-content, which lets one bold number push a whole panel
+   past its rail */
+.m-panel-bd { padding: 12px 13px 13px; display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: var(--m-gap); }
 .m-panel--accent .m-panel-hd { background: linear-gradient(90deg, var(--m-cyan-dim), transparent); }
 
 /* --------------------------------------------------------------- metric ---- */
