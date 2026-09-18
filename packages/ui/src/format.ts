@@ -17,6 +17,10 @@ export function formatValue(v: number, unit: Unit): string {
   }
   if (unit === 'none') return Math.abs(v) < 10 ? v.toFixed(2) : Math.round(v).toLocaleString('en-SG');
   if (unit === 'pct') return v.toFixed(1);
+  /* countable things are whole. "851.8 moves" is not a number anyone says. */
+  if (unit === 'moves' || unit === 'slots' || unit === 'trucks' || unit === 'TEU') {
+    return Math.round(v).toLocaleString('en-SG');
+  }
   if (Math.abs(v) >= 1000) return Math.round(v).toLocaleString('en-SG');
   if (Number.isInteger(v)) return String(v);
   return v.toFixed(1);

@@ -17,6 +17,9 @@ export function Outcome() {
   const f = useFrame();
   const planT = useStore(s => s.planT);
   const commit = useStore(s => s.commit);
+  /* a hotspot carries its own before/after now, and the two overlap in the
+     same corner — the popup is the better view, so the feed stands down */
+  const active = useStore(s => s.activeStep);
   const [feed, setFeed] = useState(true);
 
   const chosen = f?.scenario.comparison.chosen ?? null;
@@ -40,7 +43,7 @@ export function Outcome() {
 
   return (
     <>
-      {s.afterClip && feed && (
+      {s.afterClip && feed && active === null && (
         <div className="feed" style={{ opacity: planT }}>
           <div className="feed-hd m-num">
             <span className="feed-live" />quay feed · after

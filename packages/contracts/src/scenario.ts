@@ -45,6 +45,13 @@ export interface PropagationStep {
   /** the shot that SHOWS this link. One per link, not one per scenario. */
   readonly clip: string;
   /**
+   * The same link once a committed plan has repaired it — same camera, same
+   * weather, same light, differing only in what the plan changed. Absent where
+   * a link cannot be repaired, which is the honest answer for a gust front or
+   * an ETA revision.
+   */
+  readonly clipAfter?: string;
+  /**
    * Which KPI this link owns. The chain describes the DISTURBANCE, so its own
    * fact does not move when a plan is applied — the projection needs to know
    * which measured number a plan would move at this link instead.

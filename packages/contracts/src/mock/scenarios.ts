@@ -263,6 +263,21 @@ const CLIP = {
   surge: 'inserts/surge.mp4', gatecleared: 'inserts/gatecleared.mp4',
 } as const;
 
+/**
+ * The after half of each pair. Cut against the shot above it: same camera,
+ * same weather, same light, differing only in what the plan changed. Three
+ * links have no entry on purpose — a gust front, an ETA revision and a fleet
+ * being down are the disturbances themselves, and a console that appears to fix
+ * the weather is a console nobody believes.
+ */
+const AFTER = {
+  sway: 'inserts/after_sway.mp4', rate: 'inserts/after_rate.mp4',
+  hook: 'inserts/after_hook.mp4', reroute: 'inserts/after_reroute.mp4',
+  yard: 'inserts/after_yard.mp4', berth: 'inserts/after_berth.mp4',
+  feeder: 'inserts/after_feeder.mp4', charge: 'inserts/after_charge.mp4',
+  gate: 'inserts/gatecleared.mp4',
+} as const;
+
 interface FacetSpec {
   headline: string;
   kpis: (keyof KpiSet)[];
@@ -341,7 +356,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       detail: `Swing ${gust.toFixed(2)} m against an envelope of ${SWAY_ENVELOPE} m. Above it the automation cannot land a box first time.`,
       fact: fact(gust, 'none', 0.91, 'sway-v1', at, ['EV-TELEM-1']),
       from: `${SWAY_ENVELOPE} m`, to: `${ampB.toFixed(2)} m`,
-      clip: CLIP.sway, severity: sev(ampB > SWAY_ENVELOPE * 1.6, ampB > SWAY_ENVELOPE), anchor: [0.67, 0.52],
+      clipAfter: AFTER.sway, clip: CLIP.sway, severity: sev(ampB > SWAY_ENVELOPE * 1.6, ampB > SWAY_ENVELOPE), anchor: [0.67, 0.52],
     },
     {
       scale: 'TERMINAL', clock: '4 min', atMs: 4 * MIN, because: 'so anti-sway derates',
@@ -349,7 +364,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       detail: `Damping cycle lengthened, trolley acceleration capped. Hoist rate falls per crane. No human made that decision.`,
       fact: fact(rateB, 'movesPerHr', 0.93, 'sway-v1', at, ['EV-SWAY-1']),
       from: `${NOMINAL_RATE} mv/hr`, to: `${rateB.toFixed(0)} mv/hr`,
-      clip: CLIP.derate, kpi: 'movesPerHour', severity: sev(rateB < 20, rateB < 28), anchor: [0.38, 0.61],
+      clipAfter: AFTER.rate, clip: CLIP.derate, kpi: 'movesPerHour', severity: sev(rateB < 20, rateB < 28), anchor: [0.38, 0.61],
     },
     {
       scale: 'TERMINAL', clock: '6 h', atMs: 6 * HOUR, because: 'so the ship sails later',
@@ -357,7 +372,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       detail: `${movesRemaining.toLocaleString('en-SG')} moves across ${cranes} cranes. Turnaround ${turnNominal.toFixed(1)} h becomes ${turnB.toFixed(1)} h.`,
       fact: fact(delayB, 'h', 0.84, 'berth-solver-v2', at, ['EV-PLAN-1']),
       from: `${turnNominal.toFixed(1)} h`, to: `${turnB.toFixed(1)} h`,
-      kpi: 'vesselTurnaroundH', clip: CLIP.vessel, severity: sev(delayB > 6, delayB > 2), anchor: [0.62, 0.585],
+      kpi: 'vesselTurnaroundH', clipAfter: AFTER.berth, clip: CLIP.vessel, severity: sev(delayB > 6, delayB > 2), anchor: [0.62, 0.585],
     },
     {
       scale: 'PORT', clock: '3 d', atMs: 3 * DAY, because: 'so a connection misses',
@@ -368,7 +383,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
         : 'Every downstream connection still has slack. Nothing has been promised away.',
       fact: fact(hitB.teu, 'TEU', 0.75, 'flow-v4.2', at, ['EV-CONN-1']),
       from: '0 TEU', to: `${hitB.teu.toLocaleString('en-SG')} TEU`,
-      kpi: 'teuAtRisk', clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.30, 0.78],
+      kpi: 'teuAtRisk', clipAfter: AFTER.feeder, clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.30, 0.78],
     },
   ];
 
@@ -510,7 +525,9 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     cranes: chosen === 'stop-quay' ? 0 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
-    afterClip: chosen === 'sheltered-berth' ? CLIP.berth : chosen === 'light-windward' ? CLIP.derate : null,
+    afterClip: chosen === 'sheltered-berth' ? AFTER.berth
+      : chosen === 'light-windward' ? AFTER.sway
+        : chosen === 'stop-quay' ? AFTER.feeder : null,
     outcome: chosen === null ? null
       : `${chosen === 'stop-quay' ? 'quay stopped' : chosen === 'sheltered-berth' ? 'call moved behind the breakwater' : 'load re-sequenced'} · gang rate ${baseline.movesPerHour.value.toFixed(0)} → ${adapted.movesPerHour.value.toFixed(0)} mv/hr`,
     insert: 'inserts/sway.mp4',
@@ -593,7 +610,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
         : 'T2 absorbs the delay inside its own window. The following call is untouched.',
       fact: fact(collisionB, 'h', 0.85, 'berth-solver-v2', at, ['EV-PLAN-1']),
       from: '0 h', to: `${collisionB.toFixed(1)} h`,
-      kpi: 'vesselTurnaroundH', clip: CLIP.berth, severity: sev(collisionB > 3, collisionB > 0), anchor: [0.48, 0.60],
+      kpi: 'vesselTurnaroundH', clipAfter: AFTER.berth, clip: CLIP.berth, severity: sev(collisionB > 3, collisionB > 0), anchor: [0.48, 0.60],
     },
     {
       scale: 'TERMINAL', clock: '2 h', atMs: 2 * HOUR, because: 'so the yard is staged wrong',
@@ -604,7 +621,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
         : `${BLOCK_3C.parcel} export boxes in block 3C are pre-marshalled to the load sequence. Nothing has landed on top of them yet, so the dig is the standing ${digFor(0).toLocaleString('en-SG')} moves.`,
       fact: fact(digFor(delayH), 'moves', 0.94, 'stack-v3', at, ['EV-STACK-1']),
       from: `${digFor(0).toLocaleString('en-SG')} moves`, to: `${digFor(delayH).toLocaleString('en-SG')} moves`,
-      kpi: 'yardDigMoves', clip: CLIP.dig, severity: sev(delayH > 8, delayH > 3), anchor: [0.36, 0.83],
+      kpi: 'yardDigMoves', clipAfter: AFTER.yard, clip: CLIP.dig, severity: sev(delayH > 8, delayH > 3), anchor: [0.36, 0.83],
     },
     {
       scale: 'FLEET', clock: '12 h', atMs: 12 * HOUR, because: 'so appointments point at nothing',
@@ -612,7 +629,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
       detail: `${slotsB} export receival appointments are booked against a vessel that is not on the berth.`,
       fact: fact(slotsB, 'slots', 0.84, 'gate-v2', at, ['EV-GATE-1']),
       from: '0 slots', to: `${slotsB} slots`,
-      kpi: 'gateSlotsForfeited', clip: CLIP.gate, severity: sev(delayH > 10, delayH > 4), anchor: [0.80, 0.70],
+      kpi: 'gateSlotsForfeited', clipAfter: AFTER.gate, clip: CLIP.gate, severity: sev(delayH > 10, delayH > 4), anchor: [0.80, 0.70],
     },
     {
       scale: 'PORT', clock: '3 d', atMs: 3 * DAY, because: 'so a connection misses',
@@ -623,7 +640,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
         : 'Every connection still has slack.',
       fact: fact(hitB.teu, 'TEU', 0.75, 'flow-v4.2', at, ['EV-CONN-1']),
       from: '0 TEU', to: `${hitB.teu.toLocaleString('en-SG')} TEU`,
-      kpi: 'teuAtRisk', clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.24, 0.76],
+      kpi: 'teuAtRisk', clipAfter: AFTER.feeder, clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.24, 0.76],
     },
   ];
 
@@ -757,7 +774,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
           ? { title: 'Your berth plan breaks', detail: `T2 overruns by ${collisionB.toFixed(1)} h and the following call has nowhere to go.` }
           : { title: 'Your berth plan still closes', detail: 'T2 absorbs the slip inside its own window. The following call is untouched.' },
         2: buried
-          ? { title: `${digRecoverable(delayH).toLocaleString('en-SG')} unproductive moves you have not budgeted`, clip: CLIP.yard, detail: `Block 3C was pre-marshalled for the old window, and ${delayH.toFixed(0)} h of receivals have landed on top of it since. The dig is ${digFor(delayH).toLocaleString('en-SG')} moves against a budgeted ${digFor(0).toLocaleString('en-SG')}.` }
+          ? { title: `${digRecoverable(delayH).toLocaleString('en-SG')} unproductive moves you have not budgeted`, clip: CLIP.dig, detail: `Block 3C was pre-marshalled for the old window, and ${delayH.toFixed(0)} h of receivals have landed on top of it since. The dig is ${digFor(delayH).toLocaleString('en-SG')} moves against a budgeted ${digFor(0).toLocaleString('en-SG')}.` }
           : { title: 'The yard is still to plan', clip: CLIP.yard, detail: `The dig stands at the budgeted ${digFor(0).toLocaleString('en-SG')} moves. Nothing has been buried yet.` },
       },
     },
@@ -812,9 +829,9 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     preview: null,   // the kernel fills this when a plan is being projected
     afterClip: chosen === null ? null
       : chosen.startsWith('surge-') ? CLIP.surge
-        : chosen.startsWith('reoffer-') ? CLIP.gatecleared
-          : chosen.startsWith('premarshal-') ? CLIP.dig
-            : CLIP.berth,
+        : chosen.startsWith('reoffer-') ? AFTER.gate
+          : chosen.startsWith('premarshal-') ? AFTER.yard
+            : AFTER.berth,
     outcome: chosen === null ? null
       : chosen.startsWith('surge-')
         ? `${chosen.slice(6)} cranes on the call · turnaround ${baseline.vesselTurnaroundH.value.toFixed(1)} → ${adapted.vesselTurnaroundH.value.toFixed(1)} h`
@@ -877,7 +894,7 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
       detail: 'Every crane cycle that finds no vehicle waiting is dead time on the most expensive asset on the terminal.',
       fact: fact(waitPct, 'pct', 0.89, 'fleet-v2', at, ['EV-FLEET-1']),
       from: '0%', to: `${waitPct.toFixed(0)}% idle`,
-      kpi: 'movesPerHour', clip: CLIP.hook, severity: sev(poolB < required * 0.7, poolB < required), anchor: [0.67, 0.60],
+      kpi: 'movesPerHour', clipAfter: AFTER.hook, clip: CLIP.hook, severity: sev(poolB < required * 0.7, poolB < required), anchor: [0.67, 0.60],
     },
     {
       scale: 'TERMINAL', clock: '40 min', atMs: 40 * MIN, because: 'so the quay slows',
@@ -885,7 +902,7 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
       detail: `Gang rate ${NOMINAL_RATE} → ${rateB.toFixed(1)} moves per hour. Turnaround stretches by ${delayB.toFixed(1)} h.`,
       fact: fact(rateB, 'movesPerHr', 0.92, 'berth-solver-v2', at, ['EV-PLAN-1']),
       from: `${NOMINAL_RATE} mv/hr`, to: `${rateB.toFixed(1)} mv/hr`,
-      kpi: 'movesPerHour', clip: CLIP.agv, severity: sev(rateB < 20, rateB < 28), anchor: [0.38, 0.62],
+      kpi: 'movesPerHour', clipAfter: AFTER.reroute, clip: CLIP.agv, severity: sev(rateB < 20, rateB < 28), anchor: [0.38, 0.62],
     },
     {
       scale: 'TERMINAL', clock: '5 h', atMs: 5 * HOUR, because: 'so charging collides with the peak',
@@ -893,7 +910,7 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
       detail: 'The vehicles that are out need charge back, and the cheapest window has already closed. Energy per move rises with every extra trip.',
       fact: baseline.energyKwhPerMove,
       from: '3.42 kWh', to: `${baseline.energyKwhPerMove.value.toFixed(2)} kWh`,
-      kpi: 'energyKwhPerMove', clip: CLIP.charging, severity: sev(down > 8, down > 4), anchor: [0.16, 0.72],
+      kpi: 'energyKwhPerMove', clipAfter: AFTER.charge, clip: CLIP.charging, severity: sev(down > 8, down > 4), anchor: [0.16, 0.72],
     },
     {
       scale: 'PORT', clock: '2 d', atMs: 2 * DAY, because: 'so a connection misses',
@@ -904,7 +921,7 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
         : 'The delay stays inside the slack. Nothing downstream moves.',
       fact: fact(hitB.teu, 'TEU', 0.75, 'flow-v4.2', at, ['EV-CONN-1']),
       from: '0 TEU', to: `${hitB.teu.toLocaleString('en-SG')} TEU`,
-      kpi: 'teuAtRisk', clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.26, 0.80],
+      kpi: 'teuAtRisk', clipAfter: AFTER.feeder, clip: CLIP.feeder, severity: sev(hitB.count >= 2, hitB.count >= 1), anchor: [0.26, 0.80],
     },
   ];
 
@@ -1022,7 +1039,9 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
     cranes: chosen === 'repool' ? 4 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
-    afterClip: chosen === 'stagger-charge' ? CLIP.charging : chosen !== null ? CLIP.agv : null,
+    afterClip: chosen === 'stagger-charge' ? AFTER.charge
+      : chosen === 'repool' ? AFTER.hook
+        : chosen === 'landside-lane' ? AFTER.reroute : null,
     outcome: chosen === null ? null
       : `${chosen === 'repool' ? 'fleet re-pooled' : chosen === 'landside-lane' ? 'routed via the landside lane' : 'charging staggered'} · gang rate ${baseline.movesPerHour.value.toFixed(1)} → ${adapted.movesPerHour.value.toFixed(1)} mv/hr`,
     insert: 'inserts/agv.mp4',
