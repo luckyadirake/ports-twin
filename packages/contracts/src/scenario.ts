@@ -52,6 +52,14 @@ export interface PropagationStep {
    */
   readonly clipAfter?: string;
   /**
+   * How this link reads once a committed plan has repaired it. Written from the
+   * plan that did it, because "the parcel is pre-marshalled" and "the overrun
+   * moved to T3" are different sentences even when the link is the same — and
+   * an after shot beside the disturbance's own words is the same lie as an
+   * after shot beside its numbers.
+   */
+  readonly repair?: { readonly title: string; readonly detail: string };
+  /**
    * Which KPI this link owns. The chain describes the DISTURBANCE, so its own
    * fact does not move when a plan is applied — the projection needs to know
    * which measured number a plan would move at this link instead.

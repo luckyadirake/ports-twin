@@ -49,6 +49,17 @@ function rankBy(adaptations: Adaptation[], accepted: readonly string[]): Adaptat
     .map(a => ({ ...a, recommended: a.id === accepted[0] }));
 }
 
+/** Attach the repaired reading to the links a committed plan actually fixes. */
+function withRepairs(
+  chain: PropagationStep[],
+  repairs: Readonly<Record<number, { title: string; detail: string } | undefined>>,
+): PropagationStep[] {
+  return chain.map((step, i) => {
+    const r = repairs[i];
+    return r ? { ...step, repair: r } : step;
+  });
+}
+
 function solveCurated(
   lens: LensId, baseline: KpiSet, run: (id: string | null) => KpiSet,
   groups: readonly { agent: AgentId; ids: readonly { id: string; label: string }[] }[],
@@ -411,6 +422,34 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     },
   ];
 
+  /* How each link reads once the committed plan has repaired it. Only the
+     links the plan actually touches get one — the gust itself is never
+     repaired, because no plan changes the weather. */
+  const ampA = chosen === 'light-windward' ? swayAmplitude(windKt, 0.72)
+    : chosen === 'sheltered-berth' ? swayAmplitude(windKt * 0.6) : ampB;
+  const turnA = turnNominal + Math.max(0, adapted.vesselTurnaroundH.value - turnNominal);
+  const REPAIRS: Record<number, { title: string; detail: string } | undefined> = {
+    1: chosen === 'light-windward' ? {
+      title: 'The load stops fighting the wind',
+      detail: `Cranes 1–3 are now working empties and 20ft dry on the windward end. A lighter load swings ${ampA.toFixed(2)} m against ${ampB.toFixed(2)} m — back inside the ${SWAY_ENVELOPE} m envelope, so the automation lands first time again.`,
+    } : chosen === 'sheltered-berth' ? {
+      title: 'The beam wind is broken',
+      detail: `Behind the breakwater the crane sees about 60% of the open-quay wind. Swing falls to ${ampA.toFixed(2)} m, and the anti-sway loop stops derating to protect the machine.`,
+    } : undefined,
+    2: chosen !== null && adapted.movesPerHour.value > baseline.movesPerHour.value ? {
+      title: 'The rate comes back',
+      detail: `With the swing inside the envelope the damping cycle shortens and trolley acceleration is uncapped. Gang rate recovers from ${baseline.movesPerHour.value.toFixed(0)} to ${adapted.movesPerHour.value.toFixed(0)} mv/hr across ${cranes} cranes.`,
+    } : undefined,
+    3: chosen !== null && adapted.vesselTurnaroundH.value < baseline.vesselTurnaroundH.value ? {
+      title: 'The sailing window holds',
+      detail: `${movesRemaining.toLocaleString('en-SG')} moves at the recovered rate bring turnaround to ${turnA.toFixed(1)} h against ${turnB.toFixed(1)} h${chosen === 'sheltered-berth' ? ', the re-berth and tugs already paid for inside that number' : ''}. The ETD the line was quoted still stands.`,
+    } : undefined,
+    4: chosen !== null && adapted.teuAtRisk.value < baseline.teuAtRisk.value ? {
+      title: 'The connections are made',
+      detail: `Exposure falls from ${Math.round(baseline.teuAtRisk.value).toLocaleString('en-SG')} to ${Math.round(adapted.teuAtRisk.value).toLocaleString('en-SG')} TEU. The onward services keep their slack, and the 40 pharma reefers stay on the booked sailing.`,
+    } : undefined,
+  };
+
   const over = ampB > SWAY_ENVELOPE;
   const audiences: AudienceSignal[] = [
     sig('engineering', over ? 3 : 1, `Crane 4 is accruing fatigue ${over ? 'faster than the maintenance plan assumes' : 'within plan'}.`),
@@ -511,7 +550,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       label: 'Crosswind on the quay', unit: 'none', min: 0, max: 65, step: 1, value: windKt,
       caption: `${windKt.toFixed(0)} kt · sway ${ampB.toFixed(2)} m · envelope ${SWAY_ENVELOPE} m`,
     },
-    chain, adaptations: rankBy(adaptations, solved.accepted),
+    chain: withRepairs(chain, REPAIRS), adaptations: rankBy(adaptations, solved.accepted),
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at),
     weather: {
       windKt, rain: clamp((windKt - 18) / 40, 0, 1),
@@ -521,7 +560,10 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     thresholds: thresholdsFor('monsoon-sway', 0, 65, 1),
     polarity: 'disturbance', optimum: null,
     solve: solved.result,
-    fixed: chosen === 'sheltered-berth' ? [2, 3] : chosen === 'light-windward' ? [1] : [],
+    fixed: [
+      ...(chosen === 'sheltered-berth' ? [2, 3] : chosen === 'light-windward' ? [1] : []),
+      ...(chosen !== null && adapted.teuAtRisk.value < baseline.teuAtRisk.value ? [4] : []),
+    ],
     cranes: chosen === 'stop-quay' ? 0 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected
@@ -737,6 +779,35 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     ...describe(id), recommended: i === 0,
   }));
 
+  /* How each link reads once the committed plan has repaired it — written from
+     the plan that did it, not from the disturbance it replaced. */
+  const surged = chosen !== null && chosen.startsWith('surge-');
+  const premarshalled = chosen !== null && chosen.startsWith('premarshal-');
+  const reoffered = chosen !== null && chosen.startsWith('reoffer-');
+  const reberthed = chosen !== null && chosen.startsWith('reberth-');
+  const aKpi = adapted, bKpi = baseline;
+  const REPAIRS: Record<number, { title: string; detail: string } | undefined> = {
+    1: surged ? {
+      title: 'The berth window closes again',
+      detail: `Working the call with ${chosen!.slice(6)} cranes brings the turnaround down to ${aKpi.vesselTurnaroundH.value.toFixed(1)} h, so T2 releases before the following call needs it. The cranes come off the feeder at T1, which is what this costs.`,
+    } : reberthed ? {
+      title: 'The overrun has somewhere to go',
+      detail: `The following call moves to ${chosen === 'reberth-t4' ? 'T4' : 'T3'}, so the ${collisionB.toFixed(1)} h overrun is absorbed rather than compressed. Costs a shift of the feeder programme.`,
+    } : undefined,
+    2: premarshalled ? {
+      title: 'The parcel is pre-marshalled',
+      detail: `${chosen!.slice(11)}% of block 3C is sequenced in the 18:00 lull while the ASCs sit at 26% utilisation. The dig falls from ${Math.round(bKpi.yardDigMoves.value).toLocaleString('en-SG')} to ${Math.round(aKpi.yardDigMoves.value).toLocaleString('en-SG')} moves — paid for at the cheapest moment instead of the worst.`,
+    } : undefined,
+    3: reoffered ? {
+      title: 'The appointments are re-offered',
+      detail: `${chosen!.slice(8)}% of the lapsed slots are re-priced and re-offered, weighted by connection risk and free-time exposure. ${Math.round(bKpi.gateSlotsForfeited.value - aKpi.gateSlotsForfeited.value)} appointments recovered; truck turn back to ${aKpi.truckTurnTimeMin.value.toFixed(1)} min.`,
+    } : undefined,
+    4: chosen !== null && aKpi.teuAtRisk.value < bKpi.teuAtRisk.value ? {
+      title: 'The connections are made',
+      detail: `With the call back inside its window the onward services keep their slack. Exposure falls from ${Math.round(bKpi.teuAtRisk.value).toLocaleString('en-SG')} to ${Math.round(aKpi.teuAtRisk.value).toLocaleString('en-SG')} TEU — the cargo sails on the ship it was booked onto.`,
+    } : undefined,
+  };
+
   const audiences: AudienceSignal[] = [
     sig('operations', collisionB > 0 ? 3 : 1, collisionB > 0
       ? `Two vessels want T2. You are re-planning berth, cranes and yard at once.`
@@ -808,7 +879,7 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
       label: 'Arrival delay', unit: 'h', min: 0, max: 24, step: 1, value: delayH,
       caption: `ETA slip ${delayH.toFixed(0)} h · berth overrun ${collisionB.toFixed(1)} h · dig ${digFor(delayH).toLocaleString('en-SG')} moves · ${slotsB} appointments lapsed`,
     },
-    chain, adaptations,
+    chain: withRepairs(chain, REPAIRS), adaptations,
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at),
     weather: { windKt: 9, rain: 0, visibility: 1, gustPhase: phase },
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
@@ -949,6 +1020,34 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
     },
   ];
 
+  /* How each link reads once the committed plan has repaired it. Link 0 has
+     none: no plan puts a charging vehicle back on the road this minute. */
+  const cranesA = chosen === 'repool' ? 4 : cranes;
+  const poolA = chosen === 'stagger-charge' ? poolB + 3 : poolB;
+  const requiredA = cranesA * FLEET.perCrane;
+  const waitA = clamp(1 - poolA / requiredA, 0, 1) * 100;
+  const REPAIRS: Record<number, { title: string; detail: string } | undefined> = {
+    1: chosen === 'repool' ? {
+      title: 'The hook is fed again',
+      detail: `${poolA} vehicles against a requirement of ${requiredA.toFixed(0)} on ${cranesA} cranes instead of ${cranes}. Idle cycles under the hook fall from ${waitPct.toFixed(0)}% to ${waitA.toFixed(0)}% — four cranes working full beats seven working starved.`,
+    } : chosen === 'stagger-charge' ? {
+      title: 'Three vehicles come back to the hook',
+      detail: `Charge is pushed into the 22:00 trough and three vehicles return to service now. The pool goes ${poolB} → ${poolA} against a requirement of ${requiredA.toFixed(0)}, and the crane stops waiting on transport.`,
+    } : undefined,
+    2: chosen !== null && adapted.movesPerHour.value > baseline.movesPerHour.value ? {
+      title: 'Gross crane rate recovers',
+      detail: `${chosen === 'landside-lane' ? 'The landside lane is longer but it bypasses the saturated seaward route and the block-face queue. ' : ''}Gang rate goes ${baseline.movesPerHour.value.toFixed(1)} → ${adapted.movesPerHour.value.toFixed(1)} moves per hour, and turnaround comes back to ${adapted.vesselTurnaroundH.value.toFixed(1)} h.`,
+    } : undefined,
+    3: chosen === 'stagger-charge' ? {
+      title: 'Charging clears the peak window',
+      detail: `Recovery charge now lands in the 22:00 trough rather than the evening peak. Energy per move falls ${baseline.energyKwhPerMove.value.toFixed(2)} → ${adapted.energyKwhPerMove.value.toFixed(2)} kWh. The cost is a tighter battery margin on the night shift.`,
+    } : undefined,
+    4: chosen !== null && adapted.teuAtRisk.value < baseline.teuAtRisk.value ? {
+      title: 'The connections are made',
+      detail: `With the quay back at rate the delay stays inside the slack. Exposure falls from ${Math.round(baseline.teuAtRisk.value).toLocaleString('en-SG')} to ${Math.round(adapted.teuAtRisk.value).toLocaleString('en-SG')} TEU — nothing rolls to the next sailing.`,
+    } : undefined,
+  };
+
   const audiences: AudienceSignal[] = [
     sig('operations', rateB < 28 ? 3 : 1, rateB < 28
       ? `Gang rate ${rateB.toFixed(1)}. Cranes are idling ${waitPct.toFixed(0)}% of cycles waiting for a vehicle.`
@@ -1028,14 +1127,17 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
       label: 'Vehicles unavailable', unit: 'none', min: 0, max: 12, step: 1, value: down,
       caption: `${poolB} of ${FLEET.size} available · requirement ${required.toFixed(0)} · gang rate ${rateB.toFixed(1)} mv/hr`,
     },
-    chain, adaptations: rankBy(adaptations, solved.accepted),
+    chain: withRepairs(chain, REPAIRS), adaptations: rankBy(adaptations, solved.accepted),
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at),
     weather: { windKt: 12, rain: 0, visibility: 1, gustPhase: phase },
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('agv-reroute', 0, 12, 1),
     polarity: 'disturbance', optimum: null,
     solve: solved.result,
-    fixed: chosen === 'repool' ? [1, 2] : chosen === 'stagger-charge' ? [3] : chosen === 'landside-lane' ? [2] : [],
+    fixed: [
+      ...(chosen === 'repool' ? [1, 2] : chosen === 'stagger-charge' ? [1, 3] : chosen === 'landside-lane' ? [2] : []),
+      ...(chosen !== null && adapted.teuAtRisk.value < baseline.teuAtRisk.value ? [4] : []),
+    ],
     cranes: chosen === 'repool' ? 4 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
     preview: null,   // the kernel fills this when a plan is being projected

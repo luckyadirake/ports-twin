@@ -592,16 +592,19 @@
 
 /* the decision bar — the only control that makes a projection real */
 .commit {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 12;
-  display: flex; align-items: center; gap: 16px;
+  /* pinned to the right of the stage, not its middle: the low-left quarter of
+     every plate is where the yard links sit, and a bar across the bottom hid
+     the hotspots the bar is asking you to commit to. */
+  position: absolute; right: 318px; bottom: 16px; z-index: 12;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; max-width: 470px;
   padding: 9px 10px 9px 15px; border-radius: var(--m-r-lg);
   background: rgba(4,12,18,.9); border: 1px solid var(--m-cyan);
   box-shadow: 0 0 34px -8px var(--m-cyan), 0 18px 40px -20px #000;
   backdrop-filter: var(--m-blur); -webkit-backdrop-filter: var(--m-blur);
   animation: commit-in 260ms var(--m-ease);
 }
-@keyframes commit-in { from { opacity: 0; transform: translate(-50%, 10px); } }
-.commit-l { display: grid; gap: 2px; max-width: 290px; }
+@keyframes commit-in { from { opacity: 0; transform: translateY(10px); } }
+.commit-l { display: grid; gap: 2px; max-width: 260px; }
 .commit-tag { font-size: 8px; letter-spacing: .18em; color: var(--m-cyan); }
 .commit-l b { font-size: 12.5px; font-weight: 600; color: var(--m-ink); line-height: 1.25; }
 .commit-gains { display: flex; gap: 14px; padding-left: 14px; border-left: 1px solid var(--m-glass-line); }
@@ -627,15 +630,16 @@
    The loud half of committing. The port keeps its quiet data layer; this says
    out loud what the plan bought, and shows what it looks like on the ground. */
 .outcome {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 12;
-  display: flex; align-items: center; gap: 14px; max-width: calc(100% - 640px);
+  /* same corner as the bar it replaces, for the same reason */
+  position: absolute; right: 318px; bottom: 16px; z-index: 12;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; max-width: 560px;
   padding: 8px 10px 8px 15px; border-radius: var(--m-r-lg);
   background: rgba(4,14,14,.9); border: 1px solid var(--m-mint);
   box-shadow: 0 0 34px -8px var(--m-mint), 0 18px 40px -20px #000;
   backdrop-filter: var(--m-blur); -webkit-backdrop-filter: var(--m-blur);
 }
 .outcome-tag { font-size: 8px; letter-spacing: .18em; color: var(--m-mint); white-space: nowrap; }
-.outcome-line { font-size: 11.5px; color: var(--m-ink-2); max-width: 300px; line-height: 1.3; }
+.outcome-line { font-size: 11.5px; color: var(--m-ink-2); max-width: 260px; line-height: 1.3; }
 .outcome-gains { display: flex; gap: 14px; padding-left: 14px; border-left: 1px solid var(--m-glass-line); }
 .outcome-gain { display: grid; gap: 1px; }
 .outcome-gain s { color: var(--m-ink-4); text-decoration: line-through; font-size: 9.5px; }

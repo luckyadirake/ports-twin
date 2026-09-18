@@ -39,9 +39,17 @@ export function HotspotPopup() {
      disturbance's own figures is the same lie as a video that changes for
      effect — so when AFTER is up, the link reads its repaired value. */
   const k = step.kpi;
-  const onAfter = repaired && showAfter && k !== undefined;
+  const after = repaired && showAfter;
+  const onAfter = after && k !== undefined;
   const wasFact = k !== undefined ? f.scenario.comparison.baseline[k] : null;
   const nowFact = k !== undefined ? f.scenario.comparison.adapted[k] : null;
+
+  /* and so do the words. The lens retell and the link's own copy both describe
+     the disturbance; under the after shot the link is read from the plan that
+     repaired it, where the plan wrote one. */
+  const rep = after ? step.repair : undefined;
+  const title = rep ? rep.title : r ? r.title : step.title;
+  const detail = rep ? rep.detail : r ? r.detail : step.detail;
 
   return (
     <div className="hotpop" data-side={anchorRight ? 'l' : 'r'} data-fixed={repaired}>
@@ -67,9 +75,9 @@ export function HotspotPopup() {
       </div>
 
       <div className="hotpop-bd">
-        <b>{r ? r.title : step.title}</b>
-        <p>{r ? r.detail : step.detail}</p>
-        {onAfter && f.scenario.outcome && (
+        <b>{title}</b>
+        <p>{detail}</p>
+        {after && f.scenario.outcome && (
           <p className="hotpop-plan">{f.scenario.outcome}</p>
         )}
         <div className="hotpop-fact" data-after={onAfter}>
