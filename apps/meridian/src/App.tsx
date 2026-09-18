@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { PlateStage } from './stage/PlateStage';
 import { HotspotPopup } from './stage/HotspotPopup';
+import { CommitBar } from './stage/CommitBar';
 import { TopBar } from './chrome/TopBar';
 import { ScenarioRail } from './scenario/ScenarioRail';
 import { AdaptPanel } from './scenario/AdaptPanel';
@@ -68,6 +69,7 @@ export default function App() {
         </div>
 
         <AudienceRow />
+        <CommitBar />
         <HotspotPopup />
       </main>
 

@@ -575,3 +575,49 @@
 .agw-note { font-size: 8.5px; color: var(--m-ink-4); margin: 7px 0 0; letter-spacing: .03em; }
 .agw-pending { font-size: 9px; color: var(--m-ink-4); letter-spacing: .1em; padding: 10px 2px; }
 .agw-n i { font-style: normal; color: var(--m-ink-4); }
+
+/* ============================================================ PROJECTION ==
+   A plan being simulated over the port. The world cools and steps back so the
+   twin's own drawing reads as drawing — the port has not changed yet, and the
+   instant this looks like it has, the console is lying. */
+.plate-project {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background:
+    repeating-linear-gradient(
+      0deg, rgba(63,217,236,.05) 0px, rgba(63,217,236,.05) 1px, transparent 1px, transparent 3px),
+    radial-gradient(120% 80% at 50% 55%, rgba(8,34,44,.18) 0%, rgba(4,14,20,.55) 100%);
+  mix-blend-mode: screen;
+}
+
+/* the decision bar — the only control that makes a projection real */
+.commit {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 12;
+  display: flex; align-items: center; gap: 16px;
+  padding: 9px 10px 9px 15px; border-radius: var(--m-r-lg);
+  background: rgba(4,12,18,.9); border: 1px solid var(--m-cyan);
+  box-shadow: 0 0 34px -8px var(--m-cyan), 0 18px 40px -20px #000;
+  backdrop-filter: var(--m-blur); -webkit-backdrop-filter: var(--m-blur);
+  animation: commit-in 260ms var(--m-ease);
+}
+@keyframes commit-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+.commit-l { display: grid; gap: 2px; max-width: 290px; }
+.commit-tag { font-size: 8px; letter-spacing: .18em; color: var(--m-cyan); }
+.commit-l b { font-size: 12.5px; font-weight: 600; color: var(--m-ink); line-height: 1.25; }
+.commit-gains { display: flex; gap: 14px; padding-left: 14px; border-left: 1px solid var(--m-glass-line); }
+.commit-gain { display: grid; gap: 1px; font-size: 11px; }
+.commit-gain s { color: var(--m-ink-4); text-decoration: line-through; font-size: 9.5px; }
+.commit-gain em { font-style: normal; color: var(--m-mint); font-size: 13px; font-weight: 700; }
+.commit-gain i { font-style: normal; color: var(--m-ink-4); font-size: 8px; letter-spacing: .1em;
+  text-transform: uppercase; }
+.commit-no, .commit-go {
+  font-size: 9.5px; letter-spacing: .16em; border-radius: 2px; padding: 8px 13px; white-space: nowrap;
+}
+.commit-no { color: var(--m-ink-3); border: 1px solid var(--m-glass-line); }
+.commit-no:hover { color: var(--m-ink); border-color: var(--m-ink-3); }
+.commit-go {
+  color: var(--m-void); background: var(--m-cyan); border: 1px solid var(--m-cyan); font-weight: 700;
+}
+.commit-go:hover { box-shadow: 0 0 18px -2px var(--m-cyan); }
+
+.acard[data-live="true"] { border-color: var(--m-cyan); background: var(--m-cyan-dim); }
+.acard-num .sim { color: var(--m-cyan); letter-spacing: .1em; text-transform: uppercase; }

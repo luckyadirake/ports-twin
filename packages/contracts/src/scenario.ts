@@ -2,7 +2,7 @@ import type { Fact, DecisionBand, Unit } from './fact';
 import type { KpiSet } from './frame';
 import type { PlateId } from './plate';
 import type { LensId, OverlayId } from './lens';
-import type { SolveResult } from './solve';
+import type { SolveResult, AgentId } from './solve';
 
 export type ScenarioId = 'monsoon-sway' | 'vessel-delay' | 'agv-reroute' | 'jit-arrival';
 export type Scale = 'ASSET' | 'FLEET' | 'TERMINAL' | 'PORT';
@@ -44,6 +44,12 @@ export interface PropagationStep {
   readonly anchor?: readonly [number, number];
   /** the shot that SHOWS this link. One per link, not one per scenario. */
   readonly clip: string;
+  /**
+   * Which KPI this link owns. The chain describes the DISTURBANCE, so its own
+   * fact does not move when a plan is applied — the projection needs to know
+   * which measured number a plan would move at this link instead.
+   */
+  readonly kpi?: keyof KpiSet;
 }
 
 /** How loudly this disturbance reaches each of the eight audiences. */
@@ -119,6 +125,23 @@ export interface WeatherState {
   readonly gustPhase: number;   // 0..1, animates the sway
 }
 
+/**
+ * A plan the agents are SIMULATING but nobody has committed. The console draws
+ * it over the port as a projection — visibly not-yet-real — so the operator can
+ * see what a plan would do to each link before deciding to own it.
+ */
+export interface PlanPreview {
+  readonly id: string;
+  readonly label: string;
+  readonly agent: AgentId | null;
+  readonly kpis: KpiSet;
+  /** the chain as it would read under this plan — for the per-link deltas */
+  readonly chain: readonly PropagationStep[];
+  readonly fixed: readonly number[];
+  readonly cranes: number;
+  readonly dig: number;
+}
+
 export interface ScenarioState {
   readonly id: ScenarioId;
   readonly label: string;
@@ -150,6 +173,8 @@ export interface ScenarioState {
   readonly cranes: number;
   /** unproductive moves under the committed plan, for the stage */
   readonly dig: number;
+  /** the plan being simulated over the port, before anyone commits to it */
+  readonly preview: PlanPreview | null;
   /** the insert clip that belongs to this scenario's key beat */
   readonly insert: string;
 }

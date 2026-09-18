@@ -20,7 +20,7 @@ import { fact, bandFor, DEFAULT_BANDS } from '../fact';
 import { buildWorld, type World } from './world';
 import { mulberry32, gauss, type Rng } from './rng';
 import { buildScenario, DEFAULT_DISTURBANCE } from './scenarios';
-import type { ScenarioId, PlateId, LensId } from '../index';
+import type { ScenarioId, PlateId, LensId, ScenarioState, PlanPreview } from '../index';
 
 const T0 = Date.UTC(2026, 10, 3, 9, 14, 0);       // 09:14 on a Tuesday
 const HOUR = 3_600_000;
@@ -53,6 +53,9 @@ export class MockKernel {
   private plateOverride: PlateId | 'auto' = 'auto';
   private lens: LensId = 'operations';
   private chosenB: string | null = null;
+  private previewed: string | null = null;
+  /** the previewed branch is a second full scenario build — memoise it */
+  private previewCache: { key: string; scen: ScenarioState } | null = null;
 
   constructor(opts: MockOptions = {}) {
     this.seed = opts.seed ?? 20260913;
@@ -111,6 +114,7 @@ export class MockKernel {
       case 'setDisturbance': this.disturbance = cmd.value; break;
       case 'chooseAdaptation': this.chosen = cmd.id; if (cmd.id === null) this.chosenB = null; break;
       case 'chooseAdaptationB': this.chosenB = cmd.id; break;
+      case 'previewAdaptation': this.previewed = cmd.id; break;
       case 'setLens': this.lens = cmd.lens; break;
       case 'setPlate': this.plateOverride = cmd.plate; break;
       case 'checkpoint': this.checkpoints.set(cmd.name, this.t); break;
@@ -149,8 +153,45 @@ export class MockKernel {
       b.id === 'B' ? null : this.chosen, b.id === 'B' ? null : this.chosenB,
       inst, (this.t % 6000) / 6000,
     );
+    /* The projection is the same models run against a plan nobody has
+       committed to — which is the only honest way to show "what would happen
+       if". Built on demand and cached, because it is a second full solve. */
+    let preview: PlanPreview | null = null;
+    if (b.id !== 'B' && this.previewed !== null && this.previewed !== this.chosen) {
+      const key = `${this.scenarioId}:${this.disturbance}:${this.lens}:${this.previewed}`;
+      if (this.previewCache?.key !== key) {
+        this.previewCache = {
+          key,
+          scen: buildScenario(
+            this.scenarioId, this.disturbance, this.lens,
+            this.previewed, null, inst, 0,
+          ),
+        };
+      }
+      const pv = this.previewCache.scen;
+      const plan = pv.adaptations.find(a => a.id === this.previewed);
+      preview = {
+        id: this.previewed,
+        label: plan?.label ?? this.previewed,
+        /* the agent that OWNS this action — not the one whose best it was,
+           because arbitration may have pushed it down to its second choice */
+        agent: pv.solve.agents.find(a => a.best === this.previewed)?.id
+          ?? (this.previewed.startsWith('surge-') || this.previewed.startsWith('reberth-') ? 'berth'
+            : this.previewed.startsWith('premarshal-') ? 'yard'
+              : this.previewed.startsWith('reoffer-') ? 'landside'
+                : this.previewed.includes('window') ? 'voyage'
+                  : this.previewed.includes('pool') || this.previewed.includes('charge') || this.previewed.includes('lane') ? 'fleet'
+                    : null),
+        kpis: pv.comparison.adapted,
+        chain: pv.chain,
+        fixed: pv.fixed,
+        cranes: pv.cranes,
+        dig: pv.dig,
+      };
+    }
+
     const scenario = this.plateOverride === 'auto'
-      ? scen0 : { ...scen0, plate: this.plateOverride };
+      ? { ...scen0, preview } : { ...scen0, plate: this.plateOverride, preview };
     const cranes = this.cranes(inst);
     const dig = this.dig(inst, pre);
     const gate = this.gate(inst, pre);

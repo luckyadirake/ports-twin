@@ -54,4 +54,5 @@ export type KernelCommand =
   | { readonly kind: 'chooseAdaptation'; readonly id: string | null }
   | { readonly kind: 'setPlate'; readonly plate: PlateId | 'auto' }
   | { readonly kind: 'setLens'; readonly lens: LensId }
-  | { readonly kind: 'chooseAdaptationB'; readonly id: string | null };
+  | { readonly kind: 'chooseAdaptationB'; readonly id: string | null }
+  | { readonly kind: 'previewAdaptation'; readonly id: string | null };

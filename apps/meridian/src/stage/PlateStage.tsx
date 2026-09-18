@@ -14,6 +14,7 @@ export function PlateStage() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLDivElement>(null);
+  const project = useRef<HTMLDivElement>(null);
   const frame = useFrame();
   const schematic = useStore(s => s.schematic);
   const motion = useStore(s => s.motion);
@@ -36,6 +37,8 @@ export function PlateStage() {
           cv.style.width = `${w}px`; cv.style.height = `${h}px`;
         }
         const fit = panFit(w, h, st.pan);
+        // driven here rather than through React: it moves every frame
+        if (project.current) project.current.style.opacity = String(st.previewT);
         // the plate element is positioned by the SAME transform as the overlay
         if (media.current) {
           const m = media.current.style;
@@ -49,7 +52,7 @@ export function PlateStage() {
             ctx, w, h, fit, calib: PLATES[f.scenario.plate], frame: f, scen: f.scenario,
             t: performance.now(), schematic: st.schematic,
             hovered: st.hoveredStep, active: st.activeStep, revealed: st.revealed,
-            planT: st.planT,
+            planT: st.planT, previewT: st.previewT,
           });
         }
       }
@@ -106,6 +109,8 @@ export function PlateStage() {
         />
       )}
       <div className="plate-vignette" />
+      {/* the world steps back while the twin draws on top of it */}
+      <div className="plate-project" ref={project} />
       <canvas ref={canvas} className="plate-canvas" />
       {!loaded && !schematic && <div className="plate-loading m-num">LOADING PLATE…</div>}
       <span className="plate-tag m-num">

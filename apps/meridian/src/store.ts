@@ -28,6 +28,10 @@ interface State {
   solvePhase: SolvePhase;
   /** 0 → 1 as the stage eases from the do-nothing state onto the committed plan */
   planT: number;
+  /** the plan being projected over the port but not yet owned */
+  previewId: string | null;
+  /** 0 → 1 as the projection fades up over the plate */
+  previewT: number;
   pan: number;
   revealed: number;
 
@@ -45,6 +49,7 @@ interface State {
   setCompareB(v: boolean): void;
   setCascadeOpen(v: boolean): void;
   runSolve(): void;
+  preview(id: string | null): void;
   commit(id: string): void;
   setPan(v: number): void;
   revealTo(step: number): void;
@@ -66,6 +71,7 @@ export const useStore = create<State>((set, get) => ({
   bands: DEFAULT_BANDS, role: null, drawerOpen: false,
   schematic: false, motion: true, hoveredStep: null, activeStep: null, insert: null,
   compareB: false, cascadeOpen: false, solvePhase: 'idle', planT: 0,
+  previewId: null, previewT: 0,
   revealed: 5, pan: 0.5,
 
   send(cmd) {
@@ -91,7 +97,8 @@ export const useStore = create<State>((set, get) => ({
   setInsert: (insert) => set({ insert }),
   selectScenario(id) {
     get().send({ kind: 'selectScenario', id });
-    set({ insert: null, hoveredStep: null, planT: 0 });
+    set({ insert: null, hoveredStep: null, planT: 0, previewId: null, previewT: 0 });
+    post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id: null } });
     get().runSolve();
   },
   setDisturbance(value) { get().send({ kind: 'setDisturbance', value }); },
@@ -113,7 +120,30 @@ export const useStore = create<State>((set, get) => ({
   },
 
   /**
-   * Beats 4–6. Commit the plan first so the models recompute, THEN let the
+   * Beat 4, on its own. Selecting a plan does NOT commit it — it asks the
+   * agents to run it and projects the answer over the port. Nothing about the
+   * terminal has changed; the operator is being shown a future, and the visual
+   * language has to say so.
+   */
+  preview(id) {
+    clearTimers();
+    post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id } });
+    if (id === null) {
+      set({ previewId: null, previewT: 0, solvePhase: 'idle' });
+      return;
+    }
+    set({ previewId: id, previewT: 0, solvePhase: 'simulate' });
+    const t0 = performance.now(), dur = 620;
+    const tick = () => {
+      const k = Math.min(1, (performance.now() - t0) / dur);
+      set({ previewT: 1 - Math.pow(1 - k, 3) });
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  },
+
+  /**
+   * Beats 5–6. Commit the plan first so the models recompute, THEN let the
    * cascade retell itself and the stage ease onto the new state — in that
    * order, so nothing on screen moves before the number behind it does.
    */
@@ -122,11 +152,13 @@ export const useStore = create<State>((set, get) => ({
     const st = get();
     if (st.frames[0]?.scenario.comparison.chosen === id) {   // un-commit
       st.chooseAdaptation(null);
-      set({ solvePhase: 'idle', planT: 0 });
+      post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id: null } });
+      set({ solvePhase: 'idle', planT: 0, previewId: null, previewT: 0 });
       return;
     }
     st.chooseAdaptation(id);
-    set({ solvePhase: 'simulate', planT: 0, revealed: 0 });
+    post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id: null } });
+    set({ solvePhase: 'simulate', planT: 0, previewId: null, previewT: 0, revealed: 0 });
     const links = st.frames[0]?.scenario.chain.length ?? 5;
     for (let i = 0; i < links; i++) {
       timers.push(setTimeout(() => set({ revealed: i + 1 }), 120 + i * (1100 / links)));

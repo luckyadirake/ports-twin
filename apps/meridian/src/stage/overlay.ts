@@ -56,6 +56,8 @@ export interface DrawCtx {
   revealed: number;       // how many cascade links have fired
   /** 0 → 1 as the stage eases from the do-nothing state onto the committed plan */
   planT: number;
+  /** 0 → 1 as a projected plan fades up over the port */
+  previewT: number;
 }
 
 /** Screen position of every chain hotspot, for drawing AND for hit-testing. */
@@ -310,16 +312,20 @@ export function drawHotspots(d: DrawCtx) {
   const c = d.ctx;
   const pts = hotspots(d.fit, d.scen.chain, d.w, d.h);
   const fixed = new Set(d.scen.fixed);
+  const projecting = d.scen.preview !== null && d.previewT > 0.05;
+  const inPlan = new Set(d.scen.preview?.fixed ?? []);
   pts.forEach(({ i, x, y, tx, ty, off }) => {
     const step = d.scen.chain[i]!;
     const repaired = fixed.has(i) && d.planT > 0.4;
     const col = repaired ? MINT : SEV[step.severity];
+    // while a plan is being projected, the links it does not touch step back
+    const faded = projecting && !inPlan.has(i);
     const on = i < d.revealed;
     const hot = d.hovered === i || d.active === i;
     const age = d.revealed > i ? 1 : 0;
 
     c.save();
-    c.globalAlpha = on ? 1 : 0.18;
+    c.globalAlpha = (on ? 1 : 0.18) * (faded ? 0.35 : 1);
 
     // pulled in from under a rail — say so rather than pretend
     if (off) {
@@ -362,6 +368,123 @@ export function drawHotspots(d: DrawCtx) {
   });
 }
 
+/* ------------------------------------------------------------ projection -- */
+/**
+ * THE PROJECTION.
+ *
+ * A plan nobody has committed to, drawn over the port as something visibly
+ * provisional: a survey grid, a scan passing across the terminal, and a dashed
+ * readout at each link the plan would repair. It has to look like the twin
+ * thinking out loud rather than like the port having changed — because the port
+ * has not changed, and the moment that reads as real the whole console is
+ * lying.
+ */
+export function drawProjection(d: DrawCtx) {
+  const pv = d.scen.preview;
+  if (!pv || d.previewT <= 0.01) return;
+  const c = d.ctx, a = d.previewT;
+
+  /* survey grid — the twin's own coordinate space, laid over the world */
+  c.save();
+  c.globalAlpha = a * 0.5;
+  c.strokeStyle = 'rgba(63,217,236,.16)'; c.lineWidth = 1;
+  for (let u = 0; u <= 1.0001; u += 1 / 16) {
+    const p0 = P(d, [u, d.calib.horizonY]), p1 = P(d, [u, 1]);
+    c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); c.stroke();
+  }
+  for (let v = d.calib.horizonY; v <= 1.0001; v += (1 - d.calib.horizonY) / 9) {
+    const p0 = P(d, [0, v]), p1 = P(d, [1, v]);
+    c.beginPath(); c.moveTo(p0[0], p0[1]); c.lineTo(p1[0], p1[1]); c.stroke();
+  }
+  c.restore();
+
+  /* the scan — one pass every 2.4 s, so it reads as work rather than decoration */
+  const ph = (d.t / 2400) % 1;
+  const sx = d.fit.ox + ph * d.fit.sx;
+  const band = Math.max(60, d.fit.sx * 0.06);
+  const g = c.createLinearGradient(sx - band, 0, sx + band, 0);
+  g.addColorStop(0, 'rgba(63,217,236,0)');
+  g.addColorStop(0.5, `rgba(63,217,236,${0.16 * a})`);
+  g.addColorStop(1, 'rgba(63,217,236,0)');
+  c.save();
+  c.fillStyle = g;
+  c.fillRect(sx - band, PY(d, d.calib.horizonY), band * 2, d.fit.sy);
+  c.strokeStyle = `rgba(63,217,236,${0.5 * a})`; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(sx, PY(d, d.calib.horizonY)); c.lineTo(sx, d.h); c.stroke();
+  c.restore();
+
+  /* what the plan would do, link by link, in the plan's own numbers */
+  const pts = hotspots(d.fit, d.scen.chain, d.w, d.h);
+  const fixed = new Set(pv.fixed);
+  pts.forEach(({ i, x, y }) => {
+    if (!fixed.has(i)) return;
+    /* the chain describes the disturbance, so its own fact does not move when
+       a plan is applied — read the KPI that link owns instead */
+    const key = d.scen.chain[i]?.kpi;
+    const before = key ? d.scen.comparison.baseline[key] : d.scen.chain[i]?.fact;
+    const after = key ? pv.kpis[key] : pv.chain[i]?.fact;
+    if (!before || !after) return;
+
+    // a ring that keeps expanding while the agents hold the projection open
+    const k = ((d.t / 1500) + i * 0.3) % 1;
+    c.save();
+    c.globalAlpha = a * (1 - k) * 0.8;
+    c.strokeStyle = CYAN; c.lineWidth = 1.2;
+    c.beginPath(); c.arc(x, y, 14 + k * 30, 0, Math.PI * 2); c.stroke();
+    c.restore();
+
+    const moved = Math.abs(after.value - before.value) > 0.05;
+    const txt = moved
+      ? `${fmt(before.value)} → ${fmt(after.value)}`
+      : 'holds';
+    const dx = x > d.w * 0.55 ? -1 : 1;
+    const bx = x + dx * 22, by = y - 30;
+
+    c.save();
+    c.globalAlpha = a;
+    c.setLineDash([3, 3]);
+    c.strokeStyle = 'rgba(63,217,236,.85)'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x + dx * 13, y - 6); c.lineTo(bx, by + 8); c.stroke();
+    c.setLineDash([]);
+
+    c.font = '600 10px "IBM Plex Mono", monospace';
+    const w = c.measureText(txt).width + 14;
+    const rx = dx > 0 ? bx : bx - w;
+    c.fillStyle = 'rgba(4,12,18,.88)';
+    c.fillRect(rx, by - 9, w, 18);
+    c.strokeStyle = 'rgba(63,217,236,.8)';
+    c.setLineDash([4, 3]);
+    c.strokeRect(rx, by - 9, w, 18);
+    c.setLineDash([]);
+    c.fillStyle = CYAN; c.textAlign = 'left'; c.textBaseline = 'middle';
+    c.fillText(txt, rx + 7, by + 0.5);
+    c.restore();
+  });
+
+  /* the label that keeps it honest */
+  c.save();
+  c.globalAlpha = a;
+  c.font = '700 9px "IBM Plex Mono", monospace';
+  c.fillStyle = CYAN; c.textAlign = 'center'; c.textBaseline = 'top';
+  const head = `${(pv.agent ?? 'agents').toUpperCase()} · SIMULATING · NOT COMMITTED`;
+  const hw = c.measureText(head).width + 20;
+  c.fillStyle = 'rgba(4,12,18,.8)';
+  c.fillRect(d.w / 2 - hw / 2, PY(d, d.calib.horizonY) + 8, hw, 17);
+  c.strokeStyle = 'rgba(63,217,236,.6)'; c.setLineDash([4, 3]); c.lineWidth = 1;
+  c.strokeRect(d.w / 2 - hw / 2, PY(d, d.calib.horizonY) + 8, hw, 17);
+  c.setLineDash([]);
+  c.fillStyle = CYAN;
+  c.fillText(head, d.w / 2, PY(d, d.calib.horizonY) + 12);
+  c.restore();
+}
+
+const fmt = (v: number) => {
+  if (Math.abs(v) < 0.05) return '0';
+  if (Math.abs(v) >= 1000) return Math.round(v).toLocaleString('en-SG');
+  if (Math.abs(v) >= 100) return String(Math.round(v));
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+};
+
 /* ------------------------------------------------------------- weather ---- */
 export function drawWeather(d: DrawCtx) {
   const { scen, ctx: c, w, h } = d;
@@ -392,6 +515,7 @@ export function drawAll(d: DrawCtx) {
   drawYard(d);
   drawQuay(d);
   drawCranes(d);
+  drawProjection(d);        // under the pucks, over the world
   drawHotspots(d);
   if (!d.schematic) drawWeather(d);
 
