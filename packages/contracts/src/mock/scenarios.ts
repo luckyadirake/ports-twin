@@ -34,6 +34,21 @@ const spec = (
  * the recommendation are searched rather than asserted, even when the space is
  * small enough to write down.
  */
+/**
+ * Put the agents' ranking on the cards. Without this the options sat in the
+ * order they were written, so a scenario could be solved differently at 6 kt
+ * and 60 kt and look identical — which is the one thing a search must never do.
+ */
+function rankBy(adaptations: Adaptation[], accepted: readonly string[]): Adaptation[] {
+  const rank = (id: string) => {
+    const i = accepted.indexOf(id);
+    return i === -1 ? 99 : i;
+  };
+  return [...adaptations]
+    .sort((a, b) => rank(a.id) - rank(b.id))
+    .map(a => ({ ...a, recommended: a.id === accepted[0] }));
+}
+
 function solveCurated(
   lens: LensId, baseline: KpiSet, run: (id: string | null) => KpiSet,
   groups: readonly { agent: AgentId; ids: readonly { id: string; label: string }[] }[],
@@ -165,6 +180,8 @@ export const blockersFor = (staleH: number) => Math.round(digRecoverable(staleH)
 const UNPLANNED_STALENESS = 14;
 
 const VESSEL = { cranesDefault: 4, movesRemaining: 3180, nextCallIn: 30 };
+/** the quay's whole crane complement, and what the feeder at T1 needs of it */
+const QUAY_CRANES = 7, FEEDER_MIN_GANG = 2, FEEDER_STALL_H = 3.4;
 const FLEET = { size: 18, cranes: 7, perCrane: 2.2, movesRemaining: 2400 };
 
 /**
@@ -400,6 +417,16 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       `${hitB.teu.toLocaleString('en-SG')} TEU exposed, turnaround ${turnB.toFixed(1)} h.`),
   ];
 
+  const solved = solveCurated(lens, baseline, run, [
+    { agent: 'berth', ids: [
+      { id: 'sheltered-berth', label: 'Shift the call to the sheltered berth' },
+      { id: 'stop-quay', label: 'Stop the quay and take the delay' },
+    ] },
+    { agent: 'yard', ids: [{ id: 'light-windward', label: 'Light boxes to the windward cranes' }] },
+  ], [
+    ['sheltered-berth', 'stop-quay', 'the call is already moving behind the breakwater — stopping the quay as well pays the same delay twice'],
+  ]);
+
   const FALLBACK: FacetSpec = {
     headline: 'This disturbance barely reaches your desk.',
     kpis: ['movesPerHour', 'vesselTurnaroundH', 'teuAtRisk'], overlays: [], allowed: [],
@@ -469,7 +496,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
       label: 'Crosswind on the quay', unit: 'none', min: 0, max: 65, step: 1, value: windKt,
       caption: `${windKt.toFixed(0)} kt · sway ${ampB.toFixed(2)} m · envelope ${SWAY_ENVELOPE} m`,
     },
-    chain, adaptations,
+    chain, adaptations: rankBy(adaptations, solved.accepted),
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at),
     weather: {
       windKt, rain: clamp((windKt - 18) / 40, 0, 1),
@@ -478,15 +505,7 @@ function monsoon(v: number, lens: LensId, chosen: string | null, chosenB: string
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('monsoon-sway', 0, 65, 1),
     polarity: 'disturbance', optimum: null,
-    solve: solveCurated(lens, baseline, run, [
-      { agent: 'berth', ids: [
-        { id: 'sheltered-berth', label: 'Shift the call to the sheltered berth' },
-        { id: 'stop-quay', label: 'Stop the quay and take the delay' },
-      ] },
-      { agent: 'yard', ids: [{ id: 'light-windward', label: 'Light boxes to the windward cranes' }] },
-    ], [
-      ['sheltered-berth', 'stop-quay', 'the call is already moving behind the breakwater — stopping the quay as well pays the same delay twice'],
-    ]).result,
+    solve: solved.result,
     fixed: chosen === 'sheltered-berth' ? [2, 3] : chosen === 'light-windward' ? [1] : [],
     cranes: chosen === 'stop-quay' ? 0 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
@@ -519,16 +538,32 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
     if (id === 'reberth-t4') shift = -collisionB * 0.6;
     if (id !== null && id.startsWith('premarshal-')) dig = -digRecoverable(delayH) * (Number(id.slice(11)) / 100);
     if (id !== null && id.startsWith('reoffer-')) recovered = Math.round(slotsB * (Number(id.slice(8)) / 100));
-    const turn = movesRemaining / (NOMINAL_RATE * craneCount);
+
+    /* Cranes come from somewhere. The quay has QUAY_CRANES; whatever this call
+       takes, the feeder at T1 does not get, and below its minimum gang the
+       feeder stops working and overstays its own window — which lands straight
+       back on this berth as congestion. Without this the answer was always
+       "surge to seven", because nothing priced what the surge costs elsewhere,
+       and a recommendation that never moves is not a recommendation. */
+    const feederGang = Math.max(0, QUAY_CRANES - craneCount);
+    const feederStall = feederGang >= FEEDER_MIN_GANG
+      ? 0 : (FEEDER_MIN_GANG - feederGang) * FEEDER_STALL_H;
+    /* the interference penalty: cranes on one hull get in each other's way */
+    const rate = NOMINAL_RATE * (1 - 0.028 * Math.max(0, craneCount - 3));
+
+    const turn = movesRemaining / (rate * craneCount);
     const effective = Math.max(0, delayH - (turnNominal - turn));
     const hit = connectionsHit(effective);
-    const coll = Math.max(0, delayH + turn + shift - VESSEL.nextCallIn);
+    /* the feeder's own boxes are exposed while it sits unable to work */
+    const feederHit = feederStall > 0 ? connectionsHit(feederStall + 4.5) : { count: 0, teu: 0 };
+    const coll = Math.max(0, delayH + turn + shift + feederStall - VESSEL.nextCallIn);
     return kpiSet({
-      movesPerHr: NOMINAL_RATE, cranes: craneCount, movesRemaining,
+      movesPerHr: rate, cranes: craneCount, movesRemaining,
       digMoves: digFor(delayH) + dig, truckTurnMin: 42 + coll * 1.1,
       slotsLost: Math.max(0, slotsB - recovered),
-      connsAtRisk: hit.count, teuAtRisk: hit.teu,
-      kwhPerMove: 3.42, demurrage: hit.teu * 154, availability: 94.2,
+      connsAtRisk: hit.count + feederHit.count, teuAtRisk: hit.teu + feederHit.teu,
+      kwhPerMove: 3.42, demurrage: (hit.teu + feederHit.teu) * 154,
+      availability: 94.2 - Math.max(0, craneCount - cranes) * 0.7,
     }, at, 'berth-solver-v2');
   };
 
@@ -616,7 +651,11 @@ function vesselDelay(v: number, lens: LensId, chosen: string | null, chosenB: st
      these, which is exactly why showing it resolved is worth the screen. */
   const CONFLICTS: (readonly [string, string, string])[] = [
     // a surged quay and a deep pre-marshalling pass want the same ASCs
-    ...[6, 7].flatMap(n => [80, 100].map(pct => [
+    ...[5, 6, 7].flatMap(n => [100].map(pct => [
+      `surge-${n}`, `premarshal-${pct}`,
+      `${n} cranes on the call takes the ASCs that a ${pct}% pre-marshalling pass needs to feed them`,
+    ] as const)),
+    ...[6, 7].flatMap(n => [80].map(pct => [
       `surge-${n}`, `premarshal-${pct}`,
       `${n} cranes on the call leaves no ASC capacity for a ${pct}% pre-marshalling pass in the same lull`,
     ] as const)),
@@ -915,6 +954,16 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
     sig('group', hitB.count ? 2 : 1, `Throughput ${rateB.toFixed(1)} mv/hr, energy ${baseline.energyKwhPerMove.value.toFixed(2)} kWh per move.`),
   ];
 
+  const solved = solveCurated(lens, baseline, run, [
+    { agent: 'fleet', ids: [
+      { id: 'repool', label: 'Re-pool the fleet across fewer cranes' },
+      { id: 'landside-lane', label: 'Route via the landside lane' },
+      { id: 'stagger-charge', label: 'Stagger charging out of the peak window' },
+    ] },
+  ], [
+    ['repool', 'landside-lane', 'the pool is already concentrated on four cranes — the landside lane would route vehicles away from the cranes that need them'],
+  ]);
+
   const FALLBACK: FacetSpec = {
     headline: 'This one sits with operations and energy.',
     kpis: ['movesPerHour', 'energyKwhPerMove', 'vesselTurnaroundH'], overlays: [], allowed: [],
@@ -962,21 +1011,13 @@ function agvReroute(v: number, lens: LensId, chosen: string | null, chosenB: str
       label: 'Vehicles unavailable', unit: 'none', min: 0, max: 12, step: 1, value: down,
       caption: `${poolB} of ${FLEET.size} available · requirement ${required.toFixed(0)} · gang rate ${rateB.toFixed(1)} mv/hr`,
     },
-    chain, adaptations,
+    chain, adaptations: rankBy(adaptations, solved.accepted),
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at),
     weather: { windKt: 12, rain: 0, visibility: 1, gustPhase: phase },
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: thresholdsFor('agv-reroute', 0, 12, 1),
     polarity: 'disturbance', optimum: null,
-    solve: solveCurated(lens, baseline, run, [
-      { agent: 'fleet', ids: [
-        { id: 'repool', label: 'Re-pool the fleet across fewer cranes' },
-        { id: 'landside-lane', label: 'Route via the landside lane' },
-        { id: 'stagger-charge', label: 'Stagger charging out of the peak window' },
-      ] },
-    ], [
-      ['repool', 'landside-lane', 'the pool is already concentrated on four cranes — the landside lane would route vehicles away from the cranes that need them'],
-    ]).result,
+    solve: solved.result,
     fixed: chosen === 'repool' ? [1, 2] : chosen === 'stagger-charge' ? [3] : chosen === 'landside-lane' ? [2] : [],
     cranes: chosen === 'repool' ? 4 : FLEET.cranes,
     dig: adapted.yardDigMoves.value,
@@ -1259,6 +1300,16 @@ function jitArrival(v: number, lens: LensId, chosen: string | null, chosenB: str
     sig('otsec', 0, 'Nothing. No control network is touched — and a demo where every lens lights up is a demo nobody believes.'),
   ];
 
+  const solved = solveCurated(lens, baseline, run, [
+    { agent: 'voyage', ids: [
+      { id: 'firm-window', label: 'Publish a firm berth window' },
+      { id: 'indicative-window', label: 'Publish indicative, with automatic re-offer' },
+    ] },
+    { agent: 'yard', ids: [] },
+  ], [
+    ['firm-window', 'indicative-window', 'a window is either committed or it is not — publishing both to the same carrier is not a plan'],
+  ]);
+
   const FALLBACK: FacetSpec = {
     headline: 'Nothing is wrong. The question is what knowing early is worth.',
     kpis: ['fuelTonnesSaved', 'anchorageWaitH', 'vesselTurnaroundH'], overlays: [], allowed: [],
@@ -1332,21 +1383,13 @@ function jitArrival(v: number, lens: LensId, chosen: string | null, chosenB: str
       label: 'Notice horizon', unit: 'h', min: 0, max: 72, step: 1, value: notice,
       caption: `${notice.toFixed(0)} h of notice · ${speed.toFixed(1)} kt · ${fuelT.toFixed(0)} t fuel · ${waitLeft.toFixed(1)} h still at anchor · window holds ${(hold * 100).toFixed(0)}%`,
     },
-    chain, adaptations,
+    chain, adaptations: rankBy(adaptations, solved.accepted),
     comparison: comparison(baseline, adapted, adaptedB, chosen, chosenB, at, fuelSgd),
     weather: { windKt: 9, rain: 0, visibility: 1, gustPhase: phase },
     audiences, facet: facetFor(lens, SPECS[lens], FALLBACK),
     thresholds: jitThresholds(),
     insert: 'inserts/economical.mp4',
-    solve: solveCurated(lens, baseline, run, [
-      { agent: 'voyage', ids: [
-        { id: 'firm-window', label: 'Publish a firm berth window' },
-        { id: 'indicative-window', label: 'Publish indicative, with automatic re-offer' },
-      ] },
-      { agent: 'yard', ids: [] },
-    ], [
-      ['firm-window', 'indicative-window', 'a window is either committed or it is not — publishing both to the same carrier is not a plan'],
-    ]).result,
+    solve: solved.result,
     fixed: chosen !== null ? [2, 3, 4, 5, 6, 7] : [],
     cranes: VESSEL.cranesDefault,
     dig: adapted.yardDigMoves.value,

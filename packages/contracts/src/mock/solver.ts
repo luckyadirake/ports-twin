@@ -27,7 +27,12 @@ export interface Candidate {
  * lens can reorder the options.
  */
 const WEIGHTS: Record<LensId, Partial<Record<keyof KpiSet, number>>> = {
-  operations: { vesselTurnaroundH: 1.0, movesPerHour: 0.8, yardDigMoves: 0.6, truckTurnTimeMin: 0.3 },
+  /* a duty manager is not indifferent to rolled cargo — leaving connections out
+     of operations' currency was why every plan it liked was "more cranes" */
+  operations: {
+    vesselTurnaroundH: 1.0, movesPerHour: 0.8, yardDigMoves: 0.6,
+    truckTurnTimeMin: 0.3, connectionsAtRisk: 0.5, teuAtRisk: 0.4,
+  },
   commercial: { teuAtRisk: 1.0, connectionsAtRisk: 0.7, gateSlotsForfeited: 0.6, demurrageExposure: 0.8 },
   engineering: { assetAvailabilityPct: 1.0, movesPerHour: 0.4, energyKwhPerMove: 0.3 },
   safety: { assetAvailabilityPct: 0.7, vesselTurnaroundH: 0.4 },

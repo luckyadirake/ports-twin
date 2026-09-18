@@ -13,6 +13,8 @@ export function AdaptPanel() {
   const previewId = useStore(s => s.previewId);
   const chooseB = useStore(s => s.chooseAdaptationB);
   const phase = useStore(s => s.solvePhase);
+  const solved = useStore(s => s.solved);
+  const runSolve = useStore(s => s.runSolve);
   const role = useStore(s => s.role);
   const setRole = useStore(s => s.setRole);
   if (!f) return null;
@@ -38,8 +40,17 @@ export function AdaptPanel() {
       </span>}
     >
       <AgentWork />
+      {!solved && !solving && (
+        <button className="agw-cta" onClick={runSolve}>
+          <b>Run the agents</b>
+          <em>
+            {s.solve.agents.filter(a => a.engaged).map(a => a.label).join(', ')}
+            {' '}have a stake in this one. Nothing is proposed until they are asked.
+          </em>
+        </button>
+      )}
       {solving && <p className="agw-pending m-num">agents are still solving…</p>}
-      {!solving && s.adaptations.map(a => {
+      {solved && !solving && s.adaptations.map(a => {
         const isA = chosen === a.id, isB = chosenB === a.id;
         const permitted = permit(a.id);
         const projecting = previewId === a.id;

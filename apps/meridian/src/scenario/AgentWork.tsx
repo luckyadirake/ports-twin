@@ -25,6 +25,9 @@ export function AgentWork() {
   const f = useFrame();
   const phase = useStore(s => s.solvePhase);
   const runSolve = useStore(s => s.runSolve);
+  const resolving = useStore(s => s.resolving);
+  const revisions = useStore(s => s.revisions);
+  const solved = useStore(s => s.solved);
   const [tick, setTick] = useState(0);
 
   /* count up to the real number rather than snapping to it — the only
@@ -50,14 +53,16 @@ export function AgentWork() {
   const engaged = sv.agents.filter(a => a.engaged);
 
   return (
-    <div className="agw" data-running={running}>
+    <div className="agw" data-running={running || resolving} data-resolving={resolving}>
       <div className="agw-hd">
         <Micro>Agents</Micro>
         <span className="agw-sum m-num">
-          {sv.evaluated} plans evaluated · {sv.agents.reduce((n, a) => n + a.proposed, 0)} beat doing nothing · priced for {sv.lens}
+          {solved
+            ? `${sv.evaluated} plans evaluated · ${sv.agents.reduce((n, a) => n + a.proposed, 0)} beat doing nothing · priced for ${sv.lens}`
+            : `standing by · priced for ${sv.lens} when asked`}
         </span>
         <button className="agw-run m-num" onClick={runSolve} title="Run the agents again">
-          {running ? '…' : 'SOLVE'}
+          {resolving ? 'RE-SOLVING' : running ? '…' : 'SOLVE'}
         </button>
       </div>
 
@@ -72,20 +77,21 @@ export function AgentWork() {
         {sv.agents.map(a => {
           const dark = !a.engaged;
           const n = Math.round(a.evaluated * (phase === 'solve' ? tick : 1));
+          const quiet = dark || (!solved && !running);
           return (
-            <li key={a.id} className="agw-agent" data-dark={dark} title={a.mandate}>
+            <li key={a.id} className="agw-agent" data-dark={quiet} title={a.mandate}>
               <span className="agw-dot" />
               <span className="agw-name">{a.label}</span>
               <span className="agw-mandate">{dark ? 'no stake in this one' : a.mandate}</span>
               <span className="agw-n m-num">
-                {dark ? '—' : <>{a.proposed}<i>/{n}</i></>}
+                {dark || (!solved && !running) ? '—' : <>{a.proposed}<i>/{n}</i></>}
               </span>
             </li>
           );
         })}
       </ul>
 
-      {sv.rejected.length > 0 && (phase === 'idle' || at >= ORDER.indexOf('arbitrate')) && (
+      {solved && sv.rejected.length > 0 && (phase === 'idle' || at >= ORDER.indexOf('arbitrate')) && (
         <ul className="agw-rej">
           {sv.rejected.map((r, i) => (
             <li key={i}>
@@ -99,8 +105,23 @@ export function AgentWork() {
         </ul>
       )}
 
-      {engaged.length > 0 && phase === 'idle' && sv.rejected.length === 0 && (
+      {solved && engaged.length > 0 && phase === 'idle' && sv.rejected.length === 0 && revisions.length === 0 && (
         <p className="agw-note m-num">no conflicts — every plan below can stand on its own</p>
+      )}
+
+      {/* the moments the answer actually changed, and what changed it */}
+      {revisions.length > 0 && (
+        <ul className="agw-rev">
+          {revisions.map((r, i) => (
+            <li key={i} data-fresh={i === 0}>
+              <span className="agw-at m-num">{r.at.toFixed(0)}{r.unit}</span>
+              <span>
+                <b>{r.agent} now leads</b>
+                <em>{r.from ? <><s>{r.from}</s> → {r.to}</> : r.to}</em>
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

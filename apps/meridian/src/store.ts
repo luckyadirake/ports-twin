@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import type {
   KernelFrame, KernelCommand, LensId, BandThresholds, Role, ScenarioId, PlateId, SolvePhase,
 } from '@meridian/contracts';
+
+/** The agents changing their mind, and what changed it. */
+export interface Revision {
+  readonly at: number;        // the disturbance value it happened at
+  readonly unit: string;
+  readonly from: string | null;
+  readonly to: string;
+  readonly agent: string;
+}
 import { DEFAULT_BANDS } from '@meridian/contracts';
 import type { ToWorker, FromWorker } from './kernel/kernel.worker';
 
@@ -32,6 +41,13 @@ interface State {
   previewId: string | null;
   /** 0 → 1 as the projection fades up over the plate */
   previewT: number;
+  /** has a solve been RUN for this scenario yet — the options are the agents'
+   *  output, so nothing is offered until somebody asks them */
+  solved: boolean;
+  /** true while the disturbance is moving and the agents are re-scoring */
+  resolving: boolean;
+  /** the last few times the agents changed their lead recommendation */
+  revisions: Revision[];
   pan: number;
   revealed: number;
 
@@ -64,6 +80,7 @@ const post = (m: ToWorker) => worker?.postMessage(m);
 
 let timers: ReturnType<typeof setTimeout>[] = [];
 const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+let resolveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useStore = create<State>((set, get) => ({
   frames: [], ready: false, horizon: [0, 1],
@@ -71,7 +88,7 @@ export const useStore = create<State>((set, get) => ({
   bands: DEFAULT_BANDS, role: null, drawerOpen: false,
   schematic: false, motion: true, hoveredStep: null, activeStep: null, insert: null,
   compareB: false, cascadeOpen: false, solvePhase: 'idle', planT: 0,
-  previewId: null, previewT: 0,
+  previewId: null, previewT: 0, solved: false, resolving: false, revisions: [],
   revealed: 5, pan: 0.5,
 
   send(cmd) {
@@ -83,9 +100,10 @@ export const useStore = create<State>((set, get) => ({
     if (cmd.kind === 'askPeer') set({ drawerOpen: true });
   },
   setLens(lens) {
-    set({ lens });
+    set({ lens, revisions: [] });
     get().send({ kind: 'setLens', lens });
-    get().runSolve();                 // a different currency, a different ranking
+    // a different currency, a different ranking — but only if anyone has asked
+    if (get().solved) get().runSolve();
   },
   setRole: (role) => set({ role }),
   setDrawer: (drawerOpen) => set({ drawerOpen }),
@@ -97,11 +115,25 @@ export const useStore = create<State>((set, get) => ({
   setInsert: (insert) => set({ insert }),
   selectScenario(id) {
     get().send({ kind: 'selectScenario', id });
-    set({ insert: null, hoveredStep: null, planT: 0, previewId: null, previewT: 0 });
+    /* a new disturbance means nobody has asked the agents anything yet */
+    set({
+      insert: null, hoveredStep: null, planT: 0, previewId: null, previewT: 0,
+      revisions: [], solved: false, solvePhase: 'idle',
+    });
     post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id: null } });
-    get().runSolve();
   },
-  setDisturbance(value) { get().send({ kind: 'setDisturbance', value }); },
+  /**
+   * Moving the disturbance re-runs the whole search — the kernel does it on the
+   * next frame either way, but the console should SAY so, because an operator
+   * needs to know the plans in front of them belong to the number in front of
+   * them.
+   */
+  setDisturbance(value) {
+    get().send({ kind: 'setDisturbance', value });
+    set({ resolving: true });
+    if (resolveTimer !== null) clearTimeout(resolveTimer);
+    resolveTimer = setTimeout(() => set({ resolving: false }), 420);
+  },
   chooseAdaptation(id) { get().send({ kind: 'chooseAdaptation', id }); },
   chooseAdaptationB(id) { get().send({ kind: 'chooseAdaptationB', id }); set({ compareB: id !== null }); },
   setCascadeOpen: (cascadeOpen) => set({ cascadeOpen }),
@@ -116,7 +148,7 @@ export const useStore = create<State>((set, get) => ({
     set({ solvePhase: 'brief' });
     timers.push(setTimeout(() => set({ solvePhase: 'solve' }), 380));
     timers.push(setTimeout(() => set({ solvePhase: 'arbitrate' }), 1620));
-    timers.push(setTimeout(() => set({ solvePhase: 'idle' }), 2500));
+    timers.push(setTimeout(() => set({ solvePhase: 'idle', solved: true }), 2500));
   },
 
   /**
@@ -202,7 +234,29 @@ export function startKernel(): () => void {
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data;
     if (m.kind === 'ready') useStore.setState({ ready: true, horizon: m.horizon });
-    else useStore.setState({ frames: m.frames });
+    else {
+      /* Diff the lead recommendation as frames arrive. The agents re-score on
+         every frame; this notices the moments where the answer actually
+         changed, which is the only part worth a line on screen. */
+      const prev = useStore.getState().frames[0]?.scenario;
+      const next = m.frames[0]?.scenario;
+      if (prev && next && prev.id === next.id && prev.solve.lens === next.solve.lens) {
+        const a = prev.adaptations[0]?.id ?? null;
+        const b = next.adaptations[0];
+        if (b && a !== b.id) {
+          const agent = next.solve.agents.find(x => x.best === b.id)?.label
+            ?? next.solve.agents.find(x => x.engaged)?.label ?? 'agents';
+          const from = prev.adaptations[0]?.label ?? null;
+          useStore.setState(st => ({
+            revisions: [{
+              at: next.disturbance.value, unit: next.disturbance.unit === 'h' ? 'h' : '',
+              from, to: b.label, agent,
+            }, ...st.revisions].slice(0, 3),
+          }));
+        }
+      }
+      useStore.setState({ frames: m.frames });
+    }
   };
   post({ kind: 'init', seed: 20260913 });
   return () => { worker?.terminate(); worker = null; };
