@@ -1,0 +1,30 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--m-ground);
+  color: var(--m-ink);
+  font-family: var(--m-font-ui);
+  font-size: var(--m-t-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--m-cyan); outline-offset: 2px;
+}
+::selection { background: var(--m-cyan-dim); }
+
+/* every number in this product lines up */
+.m-num { font-family: var(--m-font-data); font-variant-numeric: tabular-nums; }
+
+.m-micro {
+  font-size: var(--m-t-micro); letter-spacing: var(--m-track-micro);
+  text-transform: uppercase; color: var(--m-ink-3); font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}

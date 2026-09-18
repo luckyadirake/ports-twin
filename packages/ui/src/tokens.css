@@ -1,0 +1,77 @@
+/* =============================================================================
+   MERIDIAN DESIGN LOCK
+   Instrument, not interface. Reference points: ECDIS, vessel traffic services,
+   flight-deck glass. Dark is a contrast budget, not a mood — colour is scarce
+   so the four hues that mean something can mean it loudly.
+
+   Change a value here and the whole product moves. Do not hard-code a colour
+   anywhere else in the codebase.
+   ========================================================================== */
+:root {
+  /* -- ground ------------------------------------------------------------- */
+  --m-void:        #04080D;   /* outside the frame, deepest */
+  --m-ground:      #060D15;   /* app background */
+  --m-surface:     #0A141D;   /* solid raised surface */
+  --m-surface-2:   #0F1D28;
+
+  /* -- glass: every HUD panel is one of these three ----------------------- */
+  --m-glass:       rgba(9, 18, 26, 0.72);
+  --m-glass-hi:    rgba(16, 30, 41, 0.82);
+  --m-glass-line:  rgba(124, 196, 214, 0.16);
+  --m-glass-line-hi: rgba(124, 196, 214, 0.34);
+  --m-blur:        blur(14px) saturate(1.25);
+
+  /* -- ink ---------------------------------------------------------------- */
+  --m-ink:         #DCEDF3;
+  --m-ink-2:       #94ADB8;
+  --m-ink-3:       #5D7581;
+  --m-ink-4:       #3A4B55;
+
+  /* -- the four hues that mean something ---------------------------------- */
+  --m-cyan:        #3FD9EC;   /* STRUCTURE — the twin, the system, selection */
+  --m-cyan-hi:     #7BEBF8;
+  --m-cyan-dim:    rgba(63, 217, 236, 0.16);
+  --m-mint:        #45E0B0;   /* GOOD — nominal, confirmed, headroom */
+  --m-mint-dim:    rgba(69, 224, 176, 0.16);
+  --m-amber:       #FF9A3C;   /* ATTENTION — the ghost branch, links, drift */
+  --m-amber-dim:   rgba(255, 154, 60, 0.16);
+  --m-red:         #FF5747;   /* ALARM — breach, at risk, regret */
+  --m-red-dim:     rgba(255, 87, 71, 0.16);
+  /* A fifth colour means the encoding is wrong. Fix the encoding. */
+
+  /* -- thermal ramp: telemetry only, never decoration --------------------- */
+  --m-heat-0: #1538C8;  --m-heat-1: #12A9E0;  --m-heat-2: #2BD98A;
+  --m-heat-3: #F2D544;  --m-heat-4: #FF8C1A;  --m-heat-5: #FF3B30;
+
+  /* -- type --------------------------------------------------------------- */
+  --m-font-ui:   "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --m-font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --m-t-micro:  10px;   /* uppercase labels, .16em tracking */
+  --m-t-small:  11.5px;
+  --m-t-body:   13px;
+  --m-t-lg:     16px;
+  --m-t-stat:   30px;   /* panel headline numbers */
+  --m-t-hero:   46px;
+
+  --m-track-micro: 0.16em;
+  --m-track-label: 0.08em;
+
+  /* -- geometry ----------------------------------------------------------- */
+  --m-r-sm: 2px;  --m-r: 4px;  --m-r-lg: 7px;
+  --m-gap-xs: 4px; --m-gap-sm: 8px; --m-gap: 14px; --m-gap-lg: 22px;
+  --m-rule: 1px solid var(--m-glass-line);
+
+  /* -- motion: ONE curve, everywhere -------------------------------------- */
+  --m-ease: cubic-bezier(.22,.61,.36,1);
+  --m-dur-tick: 180ms;   /* data tween — the eye tracks change, not re-reads */
+  --m-dur-ui:   240ms;
+  --m-dur-lens: 320ms;   /* lens cross-fade */
+  --m-dur-cam:  3000ms;  /* camera move: never a cut, never a snap */
+
+  --m-shadow: 0 2px 8px rgba(0,0,0,.45), 0 18px 48px -22px rgba(0,0,0,.9);
+  --m-glow-cyan: 0 0 18px rgba(63,217,236,.34);
+}
+
+/* The product commits to one visual world. It is an operations console in a
+   dark room, and it looks the same at 03:00 as it does at midday. */

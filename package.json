@@ -1,0 +1,14 @@
+{
+  "name": "meridian",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @meridian/app",
+    "build": "npm run build -w @meridian/app",
+    "typecheck": "tsc -b --pretty"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

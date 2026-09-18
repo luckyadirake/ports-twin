@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+*.log
+.vite
+.vercel
+
+# Source masters from the video model — 4K, ~200 MB, and not needed at runtime.
+# The transcoded copies the app actually serves live in
+# apps/meridian/public/plates and /inserts and ARE committed.
+assets/
+*.local
