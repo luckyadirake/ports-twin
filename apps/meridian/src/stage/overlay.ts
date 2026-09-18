@@ -60,6 +60,8 @@ export interface DrawCtx {
   previewT: number;
   /** which beat of the agent run is on screen */
   phase: SolvePhase;
+  /** repaired links the operator has already opened — those stop shouting */
+  seen: readonly number[];
 }
 
 /** Screen position of every chain hotspot, for drawing AND for hit-testing. */
@@ -347,16 +349,73 @@ export function drawHotspots(d: DrawCtx) {
       c.globalAlpha = on ? 1 : 0.18;
     }
 
-    // puck
-    c.beginPath(); c.arc(x, y, hot ? 14 : 11.5, 0, Math.PI * 2);
-    c.fillStyle = 'rgba(4,10,16,.82)'; c.fill();
-    c.strokeStyle = col; c.lineWidth = hot ? 2.2 : 1.6; c.stroke();
+    /* A REPAIRED LINK HAS SOMETHING TO SHOW, AND HAS TO SAY SO.
+       There are two shots of it now, so the puck stops being a marker and
+       becomes an invitation: bigger, breathing, and carrying the number it
+       moved. Once it has been opened it calms down — the port should not keep
+       nagging about something you have already looked at. */
+    const fresh = repaired && !d.seen.includes(i);
+    const beat = fresh ? (Math.sin(d.t / 380 + i * 0.7) + 1) / 2 : 0;
+    const r = repaired ? (hot ? 18 : 15 + beat * 1.6) : (hot ? 14 : 11.5);
 
-    // number — or a tick, once the committed plan has repaired this link
+    if (fresh) {
+      // a halo that keeps breathing, staggered so the repairs ripple along
+      const ph = ((d.t / 1500) + i * 0.24) % 1;
+      c.save();
+      c.globalAlpha = (1 - ph) * 0.5;
+      c.strokeStyle = MINT; c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, r + ph * 26, 0, Math.PI * 2); c.stroke();
+      c.restore();
+      c.save();
+      c.globalAlpha = 0.22 + beat * 0.22;
+      c.fillStyle = MINT;
+      c.beginPath(); c.arc(x, y, r + 5, 0, Math.PI * 2); c.fill();
+      c.restore();
+    }
+
+    // puck
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+    c.fillStyle = repaired ? 'rgba(6,26,22,.92)' : 'rgba(4,10,16,.82)'; c.fill();
+    c.strokeStyle = col; c.lineWidth = repaired ? 2.4 : hot ? 2.2 : 1.6; c.stroke();
+
+    // number — or a play mark, once there is footage of the repair to watch
     c.fillStyle = col;
-    c.font = `700 ${hot ? 12 : 11}px "IBM Plex Mono", monospace`;
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(repaired ? '✓' : String(i + 1), x, y + 0.5);
+    if (repaired) {
+      c.beginPath();
+      c.moveTo(x - 3.4, y - 5); c.lineTo(x + 5.2, y); c.lineTo(x - 3.4, y + 5);
+      c.closePath(); c.fill();
+    } else {
+      c.font = `700 ${hot ? 12 : 11}px "IBM Plex Mono", monospace`;
+      c.fillText(String(i + 1), x, y + 0.5);
+    }
+
+    /* the pill: what this link moved, and that there are two shots of it */
+    if (repaired && !hot) {
+      const k = step.kpi;
+      const was = k ? d.scen.comparison.baseline[k].value : null;
+      const now = k ? d.scen.comparison.adapted[k].value : null;
+      const txt = was !== null && now !== null && Math.abs(was - now) > 0.05
+        ? `${fmt(was)} → ${fmt(now)}` : 'before / after';
+      c.save();
+      c.font = '700 9.5px "IBM Plex Mono", monospace';
+      const w = c.measureText(txt).width + 18;
+      const py = y + r + 13;
+      /* keep the whole pill inside the readable band — a clipped number is
+         worse than no number */
+      const rail = Math.min(306, d.w * 0.22);
+      const px = Math.min(d.w - rail - 14 - w / 2, Math.max(rail + 14 + w / 2, x));
+      c.globalAlpha = fresh ? 0.92 + beat * 0.08 : 0.6;
+      c.fillStyle = 'rgba(6,26,22,.94)';
+      c.beginPath(); c.roundRect(px - w / 2, py - 9, w, 18, 9); c.fill();
+      c.strokeStyle = MINT; c.lineWidth = 1.2; c.stroke();
+      if (Math.abs(px - x) > 1) {           // it moved; point back at the puck
+        c.beginPath(); c.moveTo(px, py - 9); c.lineTo(x, y + r + 2); c.stroke();
+      }
+      c.fillStyle = MINT;
+      c.fillText(txt, px, py + 0.5);
+      c.restore();
+    }
 
     // on hover, name it on the plate
     if (hot) {

@@ -48,6 +48,8 @@ interface State {
   resolving: boolean;
   /** the last few times the agents changed their lead recommendation */
   revisions: Revision[];
+  /** repaired links already opened — they stop shouting once they have been seen */
+  seenFixed: number[];
   pan: number;
   revealed: number;
 
@@ -88,7 +90,7 @@ export const useStore = create<State>((set, get) => ({
   bands: DEFAULT_BANDS, role: null, drawerOpen: false,
   schematic: false, motion: true, hoveredStep: null, activeStep: null, insert: null,
   compareB: false, cascadeOpen: false, solvePhase: 'idle', planT: 0,
-  previewId: null, previewT: 0, solved: false, resolving: false, revisions: [],
+  previewId: null, previewT: 0, solved: false, resolving: false, revisions: [], seenFixed: [],
   revealed: 5, pan: 0.5,
 
   send(cmd) {
@@ -110,7 +112,13 @@ export const useStore = create<State>((set, get) => ({
   setSchematic: (schematic) => set({ schematic }),
   setMotion: (motion) => set({ motion }),
   setHovered: (hoveredStep) => set({ hoveredStep }),
-  setActive: (activeStep) => set({ activeStep }),
+  setActive(activeStep) {
+    set(st => ({
+      activeStep,
+      seenFixed: activeStep !== null && !st.seenFixed.includes(activeStep)
+        ? [...st.seenFixed, activeStep] : st.seenFixed,
+    }));
+  },
   setRevealed: (revealed: number) => set({ revealed }),
   setInsert: (insert) => set({ insert }),
   selectScenario(id) {
@@ -193,7 +201,10 @@ export const useStore = create<State>((set, get) => ({
     }
     st.chooseAdaptation(id);
     post({ kind: 'cmd', cmd: { kind: 'previewAdaptation', id: null } });
-    set({ solvePhase: 'simulate', planT: 0, previewId: null, previewT: 0, revealed: 0 });
+    set({
+      solvePhase: 'simulate', planT: 0, previewId: null, previewT: 0,
+      revealed: 0, seenFixed: [],      // a new plan has new repairs to show off
+    });
     const links = st.frames[0]?.scenario.chain.length ?? 5;
     for (let i = 0; i < links; i++) {
       timers.push(setTimeout(() => set({ revealed: i + 1 }), 120 + i * (1100 / links)));

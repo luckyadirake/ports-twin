@@ -54,7 +54,12 @@ export function Outcome() {
       )}
 
       <div className="outcome" style={{ opacity: planT }}>
-        <span className="outcome-tag m-num">plan committed</span>
+        <span className="outcome-tag m-num">
+          plan committed
+          {s.fixed.length > 0 && (
+            <b>{s.fixed.length} link{s.fixed.length > 1 ? 's' : ''} repaired — open a ▶ on the port</b>
+          )}
+        </span>
         <span className="outcome-line">{s.outcome}</span>
         <span className="outcome-gains">
           {gains.map(g => (
