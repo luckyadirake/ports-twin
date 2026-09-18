@@ -10,3 +10,7 @@ dist
 # apps/meridian/public/plates and /inserts and ARE committed.
 assets/
 *.local
+
+# never — GitHub recovery codes were sitting in this folder
+recovery-codes.txt
+*recovery*codes*
